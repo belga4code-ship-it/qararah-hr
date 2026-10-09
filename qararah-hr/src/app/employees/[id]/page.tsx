@@ -5,6 +5,8 @@ import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import EmployeeEditor, { type EditValues } from "./EmployeeEditor";
 import { toWesternDigits } from "@/lib/digits";
 
+export const instant = false;
+
 export default async function EmployeePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
