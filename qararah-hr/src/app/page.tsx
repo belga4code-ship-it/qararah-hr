@@ -1,32 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import EmployeeWorkspace from "@/components/EmployeeWorkspace";
+import { toWesternDigits } from "@/lib/digits";
 
 export const instant = false;
-
-const navigation = [
-  { icon: "⌂", label: "الرئيسية", active: true, href: "/" },
-  { icon: "♙", label: "الموظفون", href: "/employees" },
-  { icon: "◷", label: "الحضور والانصراف", href: "#" },
-  { icon: "▤", label: "المؤثرات الأسبوعية", href: "#" },
-  { icon: "▣", label: "الإجازات والمأموريات", href: "#" },
-  { icon: "☆", label: "تقييم الأداء", href: "#" },
-  { icon: "▥", label: "التقارير", href: "#" },
-];
 
 type Employee = { id: string; employee_number: string; first_name: string; last_name: string | null; branch_id: string; status: string };
 type Attendance = { employee_id: string; status: string; first_in: string | null; last_out: string | null; attendance_date: string; exception_note: string | null; employee: { employee_number: string; first_name: string; last_name: string | null } | null; branch: { name: string } | null };
 type Branch = { id: string; name: string };
 
-function Icon({ children }: { children: string }) {
-  return <span className="nav-icon" aria-hidden="true">{children}</span>;
-}
-
 function formatClock(value: string | null) {
   if (!value) return "—";
   const [hourText, minute] = value.split(":");
   const hour = Number(hourText);
-  if (!Number.isFinite(hour)) return value;
+  if (!Number.isFinite(hour)) return toWesternDigits(value);
   return `${String(hour % 12 || 12).padStart(2, "0")}:${minute} ${hour >= 12 ? "م" : "ص"}`;
 }
 
@@ -71,23 +59,12 @@ export default async function Home() {
     };
   });
   const largestDay = Math.max(1, ...weekDays.map((day) => day.present + day.late));
-  const todayLabel = new Intl.DateTimeFormat("ar-LY", { dateStyle: "full", timeZone: "Africa/Tripoli" }).format(now);
+  const todayLabel = new Intl.DateTimeFormat("ar-LY-u-nu-latn", { dateStyle: "full", timeZone: "Africa/Tripoli" }).format(now);
   const displayName = profile.full_name || user.email || "مستخدم النظام";
-  const initials = displayName.trim().charAt(0) || "م";
+  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : "مدير الفرع";
 
   return (
-    <main className="app-shell" dir="rtl">
-      <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">ق</div><div><strong>قرارة</strong><span>نظام الموارد البشرية</span></div></div>
-        <div className="menu-caption">القائمة الرئيسية</div>
-        <nav className="nav-list" aria-label="القائمة الرئيسية">
-          {navigation.map((item) => <Link className={`nav-item${item.active ? " active" : ""}`} href={item.href} key={item.label}><Icon>{item.icon}</Icon><span>{item.label}</span>{item.label === "الحضور والانصراف" && reviewCount > 0 && <span className="nav-count">{reviewCount}</span>}</Link>)}
-        </nav>
-        <div className="sidebar-footer"><div className="help-icon">؟</div><div><strong>تحتاج إلى مساعدة؟</strong><span>تواصل مع إدارة الموارد البشرية</span></div></div>
-      </aside>
-
-      <section className="workspace">
-        <header className="topbar"><div className="breadcrumb">نظام الموارد البشرية <span>/</span> الرئيسية</div><div className="top-actions"><div className="profile"><div className="avatar">{initials}</div><div><strong>{displayName}</strong><span>{profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : "مدير الفرع"}</span></div></div></div></header>
+    <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الرئيسية">
         <div className="page-content">
           <div className="welcome-row"><div><p className="eyebrow">{todayLabel}</p><h1>الرئيسية</h1><p className="welcome-copy">نظرة عامة على شؤون الموظفين والحضور في الفروع المصرح بها لحسابك.</p></div><Link className="primary-button" href="/employees"><span>♙</span> إدارة الموظفين</Link></div>
 
@@ -108,10 +85,9 @@ export default async function Home() {
             <section className="panel branch-panel"><div className="panel-heading"><div><h2>الحضور حسب الفرع</h2><p>نسبة الحضور اليوم</p></div></div><div className="branch-list">{branches.length ? branches.map((branch) => { const branchEmployees = employees.filter((employee) => employee.branch_id === branch.id); const branchRows = attendance.filter((row) => row.branch?.name === branch.name); const branchPresent = branchRows.filter((row) => ["present", "late", "on_mission"].includes(row.status)).length; const rate = branchEmployees.length ? Math.round((branchPresent / branchEmployees.length) * 100) : 0; return <div className="branch-row" key={branch.id}><div className="branch-meta"><strong>{branch.name}</strong><span>{branchPresent} / {branchEmployees.length} موظف</span></div><div className="branch-progress"><div><span style={{ width: `${rate}%` }} /></div><b>{rate}%</b></div></div>; }) : <p className="empty-message">لا توجد فروع مسجلة أو متاحة لهذا الحساب.</p>}</div></section>
           </div>
 
-          <section className="panel exceptions-panel"><div className="panel-heading"><div><h2>حالات البصمة التي تحتاج مراجعة</h2><p>راجع الحالات قبل اعتماد الحضور أو تسجيل أي خصم</p></div></div><div className="table-wrap"><table><thead><tr><th>الموظف</th><th>الرقم الوظيفي</th><th>الفرع</th><th>نوع الحالة</th><th>وقت الدخول</th><th>الحالة</th></tr></thead><tbody>{exceptions.length ? exceptions.map((row) => { const name = [row.employee?.first_name, row.employee?.last_name].filter(Boolean).join(" ") || "موظف"; const issue = row.exception_note || (row.status === "absent" ? "غياب مسجل" : row.status === "incomplete" ? "بصمة ناقصة" : "تحتاج مراجعة"); return <tr key={`${row.employee_id}-${row.attendance_date}`}><td><div className="employee-cell"><span className="employee-avatar">{name.charAt(0)}</span><strong>{name}</strong></div></td><td className="code-cell">{row.employee?.employee_number ?? "—"}</td><td>{row.branch?.name ?? "—"}</td><td>{issue}</td><td className="time-cell">{formatClock(row.first_in)}</td><td><span className={`status-pill ${row.status === "absent" ? "red" : "amber"}`}>{row.status === "absent" ? "غياب" : "مراجعة مطلوبة"}</span></td></tr>; }) : <tr><td colSpan={6} className="empty-table">لا توجد حالات مراجعة مسجلة اليوم.</td></tr>}</tbody></table></div></section>
+            <section className="panel exceptions-panel"><div className="panel-heading"><div><h2>حالات البصمة التي تحتاج مراجعة</h2><p>راجع الحالات قبل اعتماد الحضور أو تسجيل أي خصم</p></div></div><div className="table-wrap"><table><thead><tr><th>الموظف</th><th>الرقم الوظيفي</th><th>الفرع</th><th>نوع الحالة</th><th>وقت الدخول</th><th>الحالة</th></tr></thead><tbody>{exceptions.length ? exceptions.map((row) => { const name = [row.employee?.first_name, row.employee?.last_name].filter(Boolean).join(" ") || "موظف"; const issue = row.exception_note || (row.status === "absent" ? "غياب مسجل" : row.status === "incomplete" ? "بصمة ناقصة" : "تحتاج مراجعة"); return <tr key={`${row.employee_id}-${row.attendance_date}`}><td><div className="employee-cell"><span className="employee-avatar">{name.charAt(0)}</span><strong>{name}</strong></div></td><td className="code-cell">{toWesternDigits(row.employee?.employee_number ?? "—")}</td><td>{row.branch?.name ?? "—"}</td><td>{toWesternDigits(issue)}</td><td className="time-cell">{formatClock(row.first_in)}</td><td><span className={`status-pill ${row.status === "absent" ? "red" : "amber"}`}>{row.status === "absent" ? "غياب" : "مراجعة مطلوبة"}</span></td></tr>; }) : <tr><td colSpan={6} className="empty-table">لا توجد حالات مراجعة مسجلة اليوم.</td></tr>}</tbody></table></div></section>
           <footer className="page-footer"><span>© {now.getFullYear()} شركة قرارة للرخام والجرانيت</span><span>نظام الموارد البشرية <b>•</b> البيانات من Supabase</span></footer>
         </div>
-      </section>
-    </main>
+    </EmployeeWorkspace>
   );
 }

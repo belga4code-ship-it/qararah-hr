@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ChangeEvent } from "react";
 import { readSheet } from "read-excel-file/browser";
 import { createClient } from "@/lib/supabase/client";
+import { toWesternDigits } from "@/lib/digits";
 
 type ImportEmployee = {
   employeeNumber: string;
@@ -16,17 +17,43 @@ type ImportEmployee = {
   hiredOn: string | null;
   status: "active" | "needs_review";
   statusLabel: string;
+  privateData: {
+    salary_amount: number | null;
+    education: string | null;
+    graduation_year: number | null;
+    date_of_birth: string | null;
+    religion: string | null;
+    marital_status: string | null;
+    blood_type: string | null;
+    residency_expires_on: string | null;
+    phone: string | null;
+    emergency_phone: string | null;
+    emergency_contact_name: string | null;
+    passport_number: string | null;
+    entered_libya_on: string | null;
+    home_country: string | null;
+    address: string | null;
+    notes: string | null;
+    source_data: Record<string, string | number | null>;
+  };
 };
 
 const requiredHeaders = ["الكود الوظيفى", "الاسم", "الوظيفة", "القسم", "الفرع"];
+const dateHeaders = new Set(["تاريخ التعيين بالشركة", "تاريخ الحالة", "تاريخ الميلاد", "تاريخ إنتهاء الاقامه", "تاريخ دخول الى ليبيا"]);
 
 function clean(value: unknown) {
-  return value == null ? "" : String(value).replace(/\u00a0/g, " ").trim().replace(/\s+/g, " ");
+  return toWesternDigits(value).replace(/\u00a0/g, " ").trim().replace(/\s+/g, " ");
 }
 
 function asDate(value: unknown): string | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000);
+    if (!Number.isNaN(date.getTime())) {
+      return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+    }
   }
   const text = clean(value);
   if (!text) return null;
@@ -35,6 +62,21 @@ function asDate(value: unknown): string | null {
   const dmy = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
   return null;
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const text = clean(value).replace(/,/g, "");
+  if (!text) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
+function sourceValue(value: unknown): string | number | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return asDate(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  return clean(value) || null;
 }
 
 function makeRows(rows: unknown[][]) {
@@ -64,19 +106,50 @@ function makeRows(rows: unknown[][]) {
       return;
     }
     seen.add(employeeNumber);
+    const value = (name: string) => {
+      const index = column(name);
+      return index < 0 ? undefined : row[index];
+    };
     const sourceStatus = clean(row[column("الحالة")]);
     const isActive = sourceStatus === "نشط";
+    const sourceData = Object.fromEntries(headers
+      .map((header, index) => {
+        const parsedDate = dateHeaders.has(header) ? asDate(row[index]) : null;
+        return [header, parsedDate ?? sourceValue(row[index])] as const;
+      })
+      .filter(([header]) => Boolean(header)));
+    const optionalText = (header: string) => clean(value(header)) || null;
+    const notes = [optionalText("ملاحظات"), optionalText("ملاحظات 2026")].filter(Boolean).join("\n") || null;
     employees.push({
       employeeNumber,
       fullName,
-      zktUserId: clean(row[column("كود البصمة")]) || null,
+      zktUserId: clean(value("كود البصمة")) || null,
       jobTitle,
       department,
       branch,
-      branchCode: clean(row[column("رمز الفرع")]) || null,
-      hiredOn: asDate(row[column("تاريخ التعيين بالشركة")]),
+      branchCode: clean(value("رمز الفرع")) || null,
+      hiredOn: asDate(value("تاريخ التعيين بالشركة")),
       status: isActive ? "active" : "needs_review",
       statusLabel: isActive ? "نشط" : sourceStatus ? "مراجعة الحالة" : "الحالة غير محددة",
+      privateData: {
+        salary_amount: asNumber(value("راتب الموظف تحديث يوليو26")),
+        education: optionalText("المؤهل الدراسى"),
+        graduation_year: asNumber(value("دفعة التخرج")),
+        date_of_birth: asDate(value("تاريخ الميلاد")),
+        religion: optionalText("الديانة"),
+        marital_status: optionalText("الحالة الاجتماعية"),
+        blood_type: optionalText("فصيلة الدم"),
+        residency_expires_on: asDate(value("تاريخ إنتهاء الاقامه")),
+        phone: optionalText("رقم الجوال"),
+        emergency_phone: optionalText("رقم الرجوع اليه في حالة الطوارئ"),
+        emergency_contact_name: optionalText("اسم الشخص"),
+        passport_number: optionalText("رقم جواز السفر"),
+        entered_libya_on: asDate(value("تاريخ دخول الى ليبيا")),
+        home_country: optionalText("البلد الام"),
+        address: optionalText("العنوان"),
+        notes,
+        source_data: sourceData,
+      },
     });
   });
 
@@ -149,8 +222,20 @@ export default function ImportEmployees() {
         const { error } = await supabase.from("employees").upsert(employeeRows.slice(index, index + 75), { onConflict: "employee_number" });
         if (error) throw error;
       }
+      const employeeIdsResult = await supabase.from("employees").select("id,employee_number").in("employee_number", rows.map((row) => row.employeeNumber));
+      if (employeeIdsResult.error) throw employeeIdsResult.error;
+      const employeeIds = new Map((employeeIdsResult.data ?? []).map((employee) => [employee.employee_number, employee.id]));
+      const privateRows = rows.flatMap((row) => {
+        const employeeId = employeeIds.get(row.employeeNumber);
+        return employeeId ? [{ employee_id: employeeId, ...row.privateData }] : [];
+      });
+      if (privateRows.length !== rows.length) throw new Error("تعذر ربط بعض البيانات الخاصة بسجلات الموظفين.");
+      for (let index = 0; index < privateRows.length; index += 75) {
+        const { error } = await supabase.from("employee_private").upsert(privateRows.slice(index, index + 75), { onConflict: "employee_id" });
+        if (error) throw error;
+      }
       setDone(true);
-      setMessage(`تم استيراد ${employeeRows.length} سجل موظف بنجاح.`);
+      setMessage(`تم استيراد ${employeeRows.length} سجل موظف، بما يشمل البيانات الخاصة وبيانات المصدر الكاملة.`);
     } catch (error) {
       const text = error instanceof Error ? error.message : "تعذر حفظ البيانات.";
       setMessage(["needs_review", "employee_private", "job_titles_name_department", "branch_code", "full_name"].some((part) => text.includes(part))
@@ -172,9 +257,9 @@ export default function ImportEmployees() {
           <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFile} />
           <span className="upload-symbol">⇧</span>
           <strong>{fileName || "اختار ملف Excel من جهازك"}</strong>
-          <span>يدعم الملف الذي أرسلته، وتتم قراءة الأعمدة الوظيفية المطلوبة فقط.</span>
+          <span>يدعم ملف الشركة، وتُقرأ جميع أعمدة ورقة الموظفين.</span>
         </label>
-        <div className="privacy-note"><strong>البيانات التي ستُستورد</strong><span>الكود الوظيفي، الاسم، كود البصمة، الوظيفة، القسم، الفرع، رمز الفرع وتاريخ التعيين.</span><span>لن نرسل الرواتب أو أرقام الهواتف أو الجوازات أو العناوين أو بقية البيانات الشخصية.</span></div>
+        <div className="privacy-note"><strong>سيتم حفظ جميع أعمدة الورقة</strong><span>البيانات الوظيفية في employees، والراتب ومعلومات الاتصال والهوية والبيانات الشخصية في employee_private.</span><span>تُحفظ كل القيم الأصلية لكل عمود في source_data، وتظل بيانات employee_private مقيدة بسياسات RLS لأدوار الموارد البشرية والمدير.</span></div>
         {message && <p className={`import-message${done ? " success" : ""}`} role="status">{message}</p>}
       </section>
 

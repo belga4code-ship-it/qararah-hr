@@ -42,9 +42,13 @@ create table if not exists public.employee_private (
   home_country text,
   address text,
   notes text,
+  source_data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.employee_private
+  add column if not exists source_data jsonb not null default '{}'::jsonb;
 
 alter table public.employee_private enable row level security;
 drop policy if exists "HR manage private employee data" on public.employee_private;
