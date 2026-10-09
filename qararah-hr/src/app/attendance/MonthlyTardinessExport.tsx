@@ -105,5 +105,10 @@ export default function MonthlyTardinessExport({ month }: { month: string }) {
     }
   }
 
-  return <div className="monthly-tardiness-action"><button type="button" className="monthly-tardiness-button" onClick={exportMonth} disabled={busy}><span aria-hidden="true">▤</span>{busy ? "جارٍ تجهيز التقرير…" : "تصدير التأخير الشهري"}</button>{message && <span className="monthly-tardiness-message" role="status">{message}</span>}</div>;
+  const [year, monthNumber] = month.split("-").map(Number);
+  const monthLabel = Number.isFinite(year) && Number.isFinite(monthNumber)
+    ? new Intl.DateTimeFormat("ar-LY", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNumber - 1, 1)))
+    : month;
+
+  return <div className="monthly-tardiness-action"><button type="button" className="monthly-tardiness-button" onClick={exportMonth} disabled={busy} aria-label={`تصدير تقرير التأخير لشهر ${monthLabel}`}><span className="monthly-tardiness-icon" aria-hidden="true">▦</span><span className="monthly-tardiness-button-copy"><strong>{busy ? "جارٍ تجهيز التقرير…" : "تصدير التأخير الشهري"}</strong><small>تقرير كامل · {toWesternDigits(monthLabel)}</small></span><span className="monthly-tardiness-download" aria-hidden="true">↓</span></button>{message && <span className="monthly-tardiness-message" role="status">{message}</span>}</div>;
 }
