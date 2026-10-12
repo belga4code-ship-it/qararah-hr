@@ -27,12 +27,15 @@ export default async function EffectsPage() {
   if (profile.role === "branch_manager") employeesQuery = employeesQuery.eq("branch_id", profile.branch_id ?? "00000000-0000-0000-0000-000000000000");
   if (profile.role === "employee") employeesQuery = employeesQuery.eq("id", profile.employee_id ?? "00000000-0000-0000-0000-000000000000");
 
-  const [{ data: employeeData }, { data: eventData }, { data: titleData }, { data: branchData }] = await Promise.all([
+  const [{ data: employeeData }, { data: eventData }, { data: titleData }, { data: branchData }, { data: privateData }] = await Promise.all([
     employeesQuery,
-    supabase.from("hr_events").select("id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,payroll_recorded_at,details,created_at,employee:employees(employee_number,first_name,last_name,full_name,branch:branches(name))").order("effective_date", { ascending: false }).order("created_at", { ascending: false }),
+    supabase.from("hr_events").select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,payroll_recorded_at,details,created_at,employee:employees(employee_number,first_name,last_name,full_name,branch:branches(name))").order("effective_date", { ascending: false }).order("created_at", { ascending: false }),
     profile.role === "branch_manager" ? supabase.from("job_titles").select("id,name").order("name") : Promise.resolve({ data: [] }),
     profile.branch_id ? supabase.from("branches").select("name").eq("id", profile.branch_id).maybeSingle() : Promise.resolve({ data: null }),
+    profile.role === "admin" || profile.role === "hr" ? supabase.from("employee_private").select("employee_id,salary_amount") : Promise.resolve({ data: [] }),
   ]);
+  const salaries = new Map((privateData ?? []).map((row) => [row.employee_id, row.salary_amount]));
+  const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: salaries.get(employee.id) ?? null }));
 
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "الموارد البشرية" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
@@ -49,7 +52,7 @@ export default async function EffectsPage() {
           userId={user.id}
           employeeId={profile.employee_id}
           branchId={profile.branch_id}
-          employees={(employeeData ?? []) as unknown as EffectEmployee[]}
+          employees={employeesWithSalary as unknown as EffectEmployee[]}
           jobTitles={(titleData ?? []) as { id: string; name: string }[]}
           events={(eventData ?? []) as unknown as HREvent[]}
         />

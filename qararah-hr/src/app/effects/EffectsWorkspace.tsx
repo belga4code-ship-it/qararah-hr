@@ -10,10 +10,10 @@ type Role = "admin" | "hr" | "branch_manager" | "employee";
 type EventType = "new_hire" | "leave" | "termination" | "deduction" | "mission" | "late_permission" | "permission";
 export type EffectEmployee = {
   id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null;
-  status: string; branch_id: string; job_title: { name: string } | null; branch: { name: string } | null;
+  status: string; branch_id: string; salary_amount?: number | null; job_title: { name: string } | null; branch: { name: string } | null;
 };
 export type HREvent = {
-  id: string; event_type: EventType; effective_date: string; end_date: string | null; reason: string | null;
+  id: string; employee_id: string; event_type: EventType; effective_date: string; end_date: string | null; reason: string | null;
   amount: number | null; amount_unit: string | null; status: "pending" | "approved" | "rejected";
   decision_reason: string | null; decision_at: string | null; payroll_recorded_at: string | null;
   details: Record<string, unknown> | null; created_at: string;
@@ -54,6 +54,8 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
   const [directAmount, setDirectAmount] = useState("");
   const [directReason, setDirectReason] = useState("");
   const [decisionReasons, setDecisionReasons] = useState<Record<string, string>>({});
+  const [leaveDiscountTypes, setLeaveDiscountTypes] = useState<Record<string, "none" | "fixed" | "days" | "half_day" | "quarter_day">>({});
+  const [leaveDiscountValues, setLeaveDiscountValues] = useState<Record<string, string>>({});
 
   const isHeadOffice = role === "admin" || role === "hr";
   const isBranchManager = role === "branch_manager";
@@ -141,18 +143,40 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
     await finish("تم اعتماد الخصم وتسجيله ضمن خصومات الراتب مع السبب.");
   }
 
-  async function decide(eventId: string, status: "approved" | "rejected") {
+  async function decide(item: HREvent, status: "approved" | "rejected") {
     setMessage(null);
-    const reason = decisionReasons[eventId]?.trim();
+    const reason = decisionReasons[item.id]?.trim();
     if (!reason) return fail("اكتب سبب الاعتماد أو الرفض قبل حفظ القرار.");
+    let discountAmount: number | null = null;
+    let discountType: "none" | "fixed" | "days" | "half_day" | "quarter_day" = "none";
+    let discountDays = 0;
+    if (status === "approved" && item.event_type === "leave") {
+      discountType = leaveDiscountTypes[item.id] ?? "none";
+      const employee = employees.find((row) => row.id === item.employee_id);
+      const monthlySalary = Number(employee?.salary_amount);
+      if (discountType !== "none") {
+        if (!Number.isFinite(monthlySalary) || monthlySalary <= 0) return fail("راتب الموظف غير مسجل، حدّث بيانات الراتب قبل احتساب خصم الإجازة.");
+        if (discountType === "fixed") {
+          discountAmount = Number(leaveDiscountValues[item.id]);
+          if (!Number.isFinite(discountAmount) || discountAmount <= 0) return fail("أدخل مبلغ خصم صحيحًا أكبر من صفر.");
+        } else {
+          discountDays = discountType === "days" ? Number(leaveDiscountValues[item.id]) : discountType === "half_day" ? 0.5 : 0.25;
+          if (!Number.isFinite(discountDays) || discountDays <= 0) return fail("أدخل عدد أيام صحيحًا أكبر من صفر.");
+          discountAmount = Math.round((monthlySalary / 30) * discountDays * 100) / 100;
+        }
+      }
+    }
     setBusy(true);
+    const decisionDetails = item.event_type === "leave" && status === "approved"
+      ? { ...(item.details ?? {}), leave_discount_type: discountType, leave_discount_days: discountDays || null, monthly_salary: discountType === "none" ? null : Number(employees.find((row) => row.id === item.employee_id)?.salary_amount), daily_salary: discountType === "none" ? null : Math.round((Number(employees.find((row) => row.id === item.employee_id)?.salary_amount) / 30) * 100) / 100 }
+      : item.details;
     const { data, error } = await supabase.from("hr_events")
-      .update({ status, decision_reason: reason })
-      .eq("id", eventId).eq("status", "pending").select("id").maybeSingle();
+      .update({ status, decision_reason: reason, ...(item.event_type === "leave" && status === "approved" ? { amount: discountAmount, amount_unit: discountAmount === null ? null : "LYD", details: decisionDetails } : {}) })
+      .eq("id", item.id).eq("status", "pending").select("id").maybeSingle();
     if (error) return fail(`تعذر حفظ القرار: ${error.message}`);
     if (!data) return fail("الطلب لم يعد قيد المراجعة. حدّث الصفحة.");
-    setDecisionReasons((current) => ({ ...current, [eventId]: "" }));
-    await finish(status === "approved" ? "تم اعتماد الطلب وتسجيل القرار." : "تم رفض الطلب وتسجيل السبب.");
+    setDecisionReasons((current) => ({ ...current, [item.id]: "" }));
+    await finish(status === "approved" ? (item.event_type === "leave" && discountAmount !== null ? `تم اعتماد الإجازة واحتساب خصم ${discountAmount.toFixed(2)} د.ل.` : "تم اعتماد الطلب وتسجيل القرار.") : "تم رفض الطلب وتسجيل السبب.");
   }
 
   function employeeSelect(value: string, setter: (value: string) => void) {
@@ -197,13 +221,18 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
         const person = item.employee ? employeeName(item.employee) : "موظف";
         const time = typeof item.details?.requested_time === "string" ? item.details.requested_time : null;
         const canDecide = isHeadOffice && item.status === "pending";
+        const leaveDiscount = leaveDiscountTypes[item.id] ?? "none";
+        const employeeSalary = Number(employees.find((row) => row.id === item.employee_id)?.salary_amount);
+        const leaveDailyRate = Number.isFinite(employeeSalary) ? employeeSalary / 30 : null;
+        const leaveDiscountPreview = leaveDiscount === "fixed" ? Number(leaveDiscountValues[item.id]) : leaveDiscount === "days" ? (leaveDailyRate ?? 0) * Number(leaveDiscountValues[item.id]) : leaveDiscount === "half_day" ? (leaveDailyRate ?? 0) * 0.5 : leaveDiscount === "quarter_day" ? (leaveDailyRate ?? 0) * 0.25 : 0;
         return <article className="effects-event-card" key={item.id}>
           <div className="effects-event-top"><div><span className="effects-event-type">{eventLabels[item.event_type] ?? item.event_type}</span><h3>{person}<small> · {toWesternDigits(item.employee?.employee_number ?? "—")}</small></h3></div><span className={`effects-status ${item.status}`}>{statusLabels[item.status]}</span></div>
           <div className="effects-event-meta"><span>التاريخ: {toWesternDigits(item.effective_date)}{item.end_date ? ` – ${toWesternDigits(item.end_date)}` : ""}</span>{time && <span>الوقت: {toWesternDigits(time)}</span>}{item.amount != null && <strong>المبلغ: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</strong>}{item.employee?.branch?.name && <span>{item.employee.branch.name}</span>}</div>
           {item.reason && <p className="effects-event-reason"><b>السبب:</b> {item.reason}</p>}
           {item.decision_reason && <p className="effects-decision-reason"><b>{item.status === "rejected" ? "سبب الرفض:" : "قرار الإدارة:"}</b> {item.decision_reason}</p>}
+          {item.amount != null && item.event_type === "leave" && <span className="effects-payroll-note">خصم الإجازة: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</span>}
           {item.payroll_recorded_at && <span className="effects-payroll-note">تم تسجيله ضمن خصومات الراتب بتاريخ {toWesternDigits(item.payroll_recorded_at.slice(0, 10))}</span>}
-          {canDecide && <div className="effects-decision"><label>سبب الاعتماد أو الرفض<textarea rows={2} required value={decisionReasons[item.id] ?? ""} onChange={(event) => setDecisionReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label><div>{item.event_type === "deduction" && <small>اعتماد الخصم يسجله ضمن خصومات الرواتب.</small>}<button type="button" className="primary-button" disabled={busy} onClick={() => decide(item.id, "approved")}>{item.event_type === "deduction" ? "اعتماد وتسجيل الخصم" : "اعتماد الطلب"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => decide(item.id, "rejected")}>رفض الطلب</button></div></div>}
+          {canDecide && <div className="effects-decision"><label>سبب الاعتماد أو الرفض<textarea rows={2} required value={decisionReasons[item.id] ?? ""} onChange={(event) => setDecisionReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label>{item.event_type === "leave" && <div className="effects-leave-discount"><label>طريقة خصم الإجازة<select value={leaveDiscount} onChange={(event) => setLeaveDiscountTypes((current) => ({ ...current, [item.id]: event.target.value as typeof leaveDiscount }))}><option value="none">بدون خصم</option><option value="fixed">خصم مبلغ ثابت</option><option value="days">خصم بعدد الأيام</option><option value="half_day">خصم نصف يوم</option><option value="quarter_day">خصم ربع يوم</option></select></label>{leaveDiscount !== "none" && <><small>الراتب الشهري: {Number.isFinite(employeeSalary) && employeeSalary > 0 ? `${toWesternDigits(employeeSalary.toFixed(2))} د.ل` : "غير مسجل"} · أجر اليوم = الراتب ÷ 30 = {leaveDailyRate ? `${toWesternDigits(leaveDailyRate.toFixed(2))} د.ل` : "—"}</small>{(leaveDiscount === "fixed" || leaveDiscount === "days") && <label>{leaveDiscount === "fixed" ? "مبلغ الخصم بالدينار" : "عدد أيام الخصم"}<input type="number" min="0.01" step="0.01" required value={leaveDiscountValues[item.id] ?? ""} onChange={(event) => setLeaveDiscountValues((current) => ({ ...current, [item.id]: event.target.value }))} /></label>}<small>قيمة الخصم المتوقعة: {Number.isFinite(leaveDiscountPreview) && leaveDiscountPreview > 0 ? `${toWesternDigits(leaveDiscountPreview.toFixed(2))} د.ل` : "أدخل القيمة لحساب الخصم"}</small></>}</div>}<div>{item.event_type === "deduction" && <small>اعتماد الخصم يسجله ضمن خصومات الرواتب.</small>}<button type="button" className="primary-button" disabled={busy} onClick={() => decide(item, "approved")}>{item.event_type === "deduction" ? "اعتماد وتسجيل الخصم" : "اعتماد الطلب"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => decide(item, "rejected")}>رفض الطلب</button></div></div>}
         </article>;
       })}</div> : <p className="effects-empty-note">ما فيش طلبات أو مؤثرات مسجلة لحد الآن.</p>}
     </section>

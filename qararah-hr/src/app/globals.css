@@ -157,6 +157,7 @@ body,.app-shell{background:#f1f5f9;color:#0f172a}
 .effects-status{padding:6px 10px;font-size:9px}
 .effects-status.pending{background:#fff6e5;color:#98620c}
 .effects-status.approved{background:#edf8f0;color:#28734b}
+.effects-leave-discount{display:grid;gap:8px;padding:12px;border:1px solid #e3ebe6;border-radius:9px;background:#f8fbf8}.effects-leave-discount label{display:grid;gap:6px;color:#52645a;font-size:11px;font-weight:700}.effects-leave-discount select,.effects-leave-discount input{width:100%;min-height:38px;padding:8px 10px;border:1px solid #dce6df;border-radius:8px;background:#fff;color:#263c31;font:inherit}.effects-leave-discount small{color:#718076;font-size:10px;line-height:1.7}
 .effects-status.rejected{background:#fff1f1;color:#a53c3c}
 .effects-event-meta{gap:8px 15px;color:#718096;font-size:10px}
 .effects-event-meta span{padding:4px 8px;border:1px solid #edf1f5;border-radius:7px;background:#f8fafc}
