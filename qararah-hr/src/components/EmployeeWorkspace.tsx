@@ -7,7 +7,7 @@ const navigation = [
   { label: "استيراد الموظفين", href: "/employees/import", icon: "⇧", breadcrumb: "استيراد الموظفين" },
   { label: "الحضور والانصراف", href: "/attendance", icon: "◷", breadcrumb: "الحضور والانصراف" },
   { label: "استيراد الحضور", href: "/attendance/import", icon: "⇧", breadcrumb: "استيراد الحضور" },
-  { label: "المؤثرات الأسبوعية", icon: "▤" },
+  { label: "المؤثرات الأسبوعية", href: "/effects", icon: "▤", breadcrumb: "المؤثرات الأسبوعية" },
   { label: "الإجازات والمأموريات", icon: "▣" },
   { label: "تقييم الأداء", icon: "☆" },
   { label: "التقارير", href: "/attendance/report", icon: "▥", breadcrumb: "التقرير الأسبوعي" },

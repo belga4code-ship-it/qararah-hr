@@ -61,7 +61,7 @@ export default async function Home() {
   const largestDay = Math.max(1, ...weekDays.map((day) => day.present + day.late));
   const todayLabel = new Intl.DateTimeFormat("ar-LY-u-nu-latn", { dateStyle: "full", timeZone: "Africa/Tripoli" }).format(now);
   const displayName = profile.full_name || user.email || "مستخدم النظام";
-  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : "مدير الفرع";
+  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
 
   return (
     <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الرئيسية">

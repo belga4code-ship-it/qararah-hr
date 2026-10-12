@@ -17,7 +17,9 @@ export default function LoginPage() {
     setError("");
     setBusy(true);
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const identifier = email.trim();
+    const loginEmail = identifier.includes("@") ? identifier : `${identifier.toLowerCase()}@qararah.test`;
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
     setBusy(false);
 
     if (signInError) {
@@ -37,8 +39,8 @@ export default function LoginPage() {
         <h1>تسجيل الدخول</h1>
         <p className="welcome-copy">ادخل إلى نظام الموارد البشرية بحسابك المعتمد.</p>
         <form className="login-form" onSubmit={handleSubmit}>
-          <label htmlFor="email">البريد الإلكتروني</label>
-          <input id="email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} />
+          <label htmlFor="email">اسم المستخدم أو البريد الإلكتروني</label>
+          <input id="email" type="text" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="belga" />
           <label htmlFor="password">كلمة المرور</label>
           <input id="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
           {error && <p className="login-error" role="alert">{error}</p>}
