@@ -38,7 +38,10 @@ export default async function Home() {
     supabase.from("attendance_records").select("attendance_date,status").gte("attendance_date", weekStart).lte("attendance_date", today),
   ]);
 
-  const employees = (employeeData ?? []) as Employee[];
+  const employees = ((employeeData ?? []) as unknown as Array<Omit<Employee, "job_title"> & { job_title: { name: string } | { name: string }[] | null }>).map((employee) => ({
+    ...employee,
+    job_title: Array.isArray(employee.job_title) ? employee.job_title[0] ?? null : employee.job_title,
+  })) as Employee[];
   const jobTitleCounts = [...employees.reduce((counts, employee) => {
     const title = employee.job_title?.name?.trim() || "بدون مسمى وظيفي";
     counts.set(title, (counts.get(title) ?? 0) + 1);

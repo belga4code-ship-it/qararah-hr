@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toWesternDigits } from "@/lib/digits";
 
 type EmployeeOption = { id: string; full_name: string; employee_number: string; branch_name: string };
-type Goal = { id: string; employee_id: string; period_month: string; title: string; description: string | null; target_value: number | null; target_unit: string | null; employee?: { full_name: string | null; first_name: string; last_name: string | null; employee_number: string } | null };
+export type Goal = { id: string; employee_id: string; period_month: string; title: string; description: string | null; target_value: number | null; target_unit: string | null; employee?: { full_name: string | null; first_name: string; last_name: string | null; employee_number: string } | null };
 const monthNow = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit" }).format(new Date());
 
 export default function GoalsWorkspace({ role, employeeId, userId, employees, goals }: { role: "admin" | "hr" | "employee" | "branch_manager" | "accountant" | "auditor"; employeeId: string | null; userId: string; employees: EmployeeOption[]; goals: Goal[] }) {
