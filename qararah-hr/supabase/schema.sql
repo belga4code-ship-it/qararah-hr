@@ -1,7 +1,7 @@
 -- Qararah HR initial schema. Apply in the Supabase SQL editor.
 create extension if not exists pgcrypto;
 
-create type public.app_role as enum ('admin', 'hr', 'branch_manager', 'accountant', 'employee');
+create type public.app_role as enum ('admin', 'hr', 'branch_manager', 'accountant', 'employee', 'auditor');
 create type public.employee_status as enum ('active', 'on_leave', 'suspended', 'terminated', 'needs_review');
 create type public.attendance_status as enum ('present', 'late', 'absent', 'incomplete', 'on_mission', 'leave', 'needs_review');
 create type public.hr_event_type as enum ('new_hire', 'leave', 'termination', 'salary_hold', 'salary_release', 'deduction', 'mission', 'branch_transfer', 'status_change', 'advance', 'other');

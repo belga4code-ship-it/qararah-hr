@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -23,7 +24,7 @@ export default function LoginPage() {
     setBusy(false);
 
     if (signInError) {
-      setError("تعذر تسجيل الدخول. راجع البريد الإلكتروني وكلمة المرور.");
+      setError("تعذر تسجيل الدخول. راجع اسم المستخدم أو البريد الإلكتروني وكلمة المرور.");
       return;
     }
 
@@ -34,7 +35,7 @@ export default function LoginPage() {
   return (
     <main className="login-shell" dir="rtl">
       <section className="login-card">
-        <div className="brand-mark login-mark">ق</div>
+        <Image className="login-logo" src="/qararah-logo.jpeg" alt="شعار شركة قرارة للرخام والجرانيت" width={200} height={200} priority />
         <p className="eyebrow">شركة قرارة للرخام والجرانيت</p>
         <h1>تسجيل الدخول</h1>
         <p className="welcome-copy">ادخل إلى نظام الموارد البشرية بحسابك المعتمد.</p>
@@ -46,7 +47,7 @@ export default function LoginPage() {
           {error && <p className="login-error" role="alert">{error}</p>}
           <button className="primary-button login-submit" type="submit" disabled={busy}>{busy ? "جارٍ الدخول..." : "دخول"}</button>
         </form>
-        <p className="login-footnote">إن لم يكن لديك حساب، اطلب من مسؤول النظام إضافته من Supabase.</p>
+        <p className="login-footnote">إذا لم يكن لديك حساب، اطلب من الموارد البشرية إنشاءه من ملف الموظف.</p>
       </section>
     </main>
   );

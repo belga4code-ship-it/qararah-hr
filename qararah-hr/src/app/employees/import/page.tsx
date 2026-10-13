@@ -16,7 +16,7 @@ export default async function ImportEmployeesPage() {
 
   const userName = profile.full_name || user.email || "مستخدم النظام";
   return (
-    <EmployeeWorkspace userName={userName} email={user.email ?? ""} roleLabel={profile.role === "admin" ? "مدير النظام" : "الموارد البشرية"} breadcrumb="استيراد الموظفين">
+    <EmployeeWorkspace userName={userName} email={user.email ?? ""} roleLabel={profile.role === "admin" ? "مدير النظام" : "مدير الموارد البشرية"} breadcrumb="استيراد الموظفين">
       <main className="employees-page" dir="rtl">
       <div className="page-content">
         <div className="welcome-row"><div><p className="eyebrow">استيراد من ملف الشركة</p><h1>استيراد موظفين</h1><p className="welcome-copy">حمّل ملف Excel، راجع الأعمدة والسجلات، ثم احفظها في قاعدة البيانات.</p></div><Link className="secondary-button" href="/employees">رجوع إلى الموظفين</Link></div>

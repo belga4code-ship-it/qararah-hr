@@ -14,8 +14,9 @@ export default async function AttendanceReportPage() {
   if (!user) redirect("/login");
   const { data: profile } = await supabase.from("profiles").select("full_name,role").eq("id", user.id).maybeSingle();
   if (!profile) redirect("/setup-required");
-  if (!(profile.role === "admin" || profile.role === "hr")) redirect("/attendance");
-  return <EmployeeWorkspace userName={profile.full_name || user.email || "مستخدم النظام"} email={user.email ?? ""} roleLabel={profile.role === "admin" ? "مدير النظام" : "الموارد البشرية"} breadcrumb="التقرير الأسبوعي">
+  if (!(profile.role === "admin" || profile.role === "hr" || profile.role === "auditor")) redirect("/attendance");
+  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : "مراجع حسابات";
+  return <EmployeeWorkspace userName={profile.full_name || user.email || "مستخدم النظام"} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="التقرير الأسبوعي">
     <main className="attendance-page page-content" dir="rtl">
       <section className="attendance-welcome"><div><p className="eyebrow">تقارير الحضور والانصراف</p><h1>التقرير الأسبوعي</h1><p className="welcome-copy">جهّز تقرير الإدارة حسب الفترة والدوام المعتمد لكل فرع.</p></div><Link className="secondary-button" href="/attendance">العودة للحضور</Link></section>
       <WeeklyAttendanceReport />

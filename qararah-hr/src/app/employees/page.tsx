@@ -12,6 +12,7 @@ export default async function EmployeesPage() {
   if (!user) redirect("/login");
   const { data: profile } = await supabase.from("profiles").select("id,role,full_name").eq("id", user.id).maybeSingle();
   if (!profile) redirect("/setup-required");
+  if (profile.role === "employee") redirect("/");
 
   const { data } = await supabase
     .from("employees")
@@ -20,14 +21,14 @@ export default async function EmployeesPage() {
   const employees = (data ?? []) as unknown as EmployeeListRow[];
   const canEdit = profile.role === "admin" || profile.role === "hr";
 
-  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : "مدير الفرع";
+  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "accountant" ? "محاسب" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
   const displayName = profile.full_name || user.email || "مستخدم النظام";
 
   return (
     <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الموظفون">
       <div className="employees-page">
       <div className="page-content">
-        <div className="welcome-row"><div><p className="eyebrow">إدارة ملفات العاملين</p><h1>الموظفون</h1><p className="welcome-copy">بيانات واضحة وسهلة القراءة لكل الموظفين المسجلين.</p></div><Link className="primary-button" href="/employees/import"><span>⇧</span> استيراد موظفين</Link></div>
+        <div className="welcome-row"><div><p className="eyebrow">إدارة ملفات العاملين</p><h1>الموظفون</h1><p className="welcome-copy">بيانات واضحة وسهلة القراءة لكل الموظفين المسجلين.</p></div>{canEdit && <Link className="primary-button" href="/employees/import"><span>⇧</span> استيراد موظفين</Link>}</div>
         <section className="panel employees-table-panel"><div className="panel-heading employees-heading"><div><h2>بيانات الموظفين</h2><p>{employees.length} موظف مسجل</p></div><span className="employees-hint">اضغط على «فتح الملف» لعرض البيانات وتعديلها</span></div><EmployeesList employees={employees} canEdit={canEdit} /></section>
       </div>
       </div>

@@ -18,7 +18,7 @@ export default async function EffectsPage() {
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) redirect("/setup-required");
-  if (!(profile.role === "admin" || profile.role === "hr" || profile.role === "branch_manager" || profile.role === "employee")) redirect("/");
+  if (!(profile.role === "admin" || profile.role === "hr" || profile.role === "branch_manager" || profile.role === "employee" || profile.role === "auditor")) redirect("/");
 
   let employeesQuery = supabase
     .from("employees")
@@ -32,13 +32,13 @@ export default async function EffectsPage() {
     supabase.from("hr_events").select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,payroll_recorded_at,details,created_at,employee:employees(employee_number,first_name,last_name,full_name,branch:branches(name))").order("effective_date", { ascending: false }).order("created_at", { ascending: false }),
     profile.role === "branch_manager" ? supabase.from("job_titles").select("id,name").order("name") : Promise.resolve({ data: [] }),
     profile.branch_id ? supabase.from("branches").select("name").eq("id", profile.branch_id).maybeSingle() : Promise.resolve({ data: null }),
-    profile.role === "admin" || profile.role === "hr" ? supabase.from("employee_private").select("employee_id,salary_amount") : Promise.resolve({ data: [] }),
+    profile.role === "admin" || profile.role === "hr" ? supabase.from("employee_private").select("employee_id,salary_amount,phone") : Promise.resolve({ data: [] }),
   ]);
-  const salaries = new Map((privateData ?? []).map((row) => [row.employee_id, row.salary_amount]));
-  const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: salaries.get(employee.id) ?? null }));
+  const privateEmployees = new Map((privateData ?? []).map((row) => [row.employee_id, row]));
+  const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: privateEmployees.get(employee.id)?.salary_amount ?? null, phone: privateEmployees.get(employee.id)?.phone ?? null }));
 
   const name = profile.full_name || user.email || "مستخدم النظام";
-  const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "الموارد البشرية" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
+  const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
 
   return (
     <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="المؤثرات الأسبوعية">

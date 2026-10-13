@@ -6,11 +6,11 @@ import type { FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toWesternDigits } from "@/lib/digits";
 
-type Role = "admin" | "hr" | "branch_manager" | "employee";
+type Role = "admin" | "hr" | "branch_manager" | "employee" | "auditor";
 type EventType = "new_hire" | "leave" | "termination" | "deduction" | "mission" | "late_permission" | "permission";
 export type EffectEmployee = {
   id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null;
-  status: string; branch_id: string; salary_amount?: number | null; job_title: { name: string } | null; branch: { name: string } | null;
+  status: string; branch_id: string; salary_amount?: number | null; phone?: string | null; job_title: { name: string } | null; branch: { name: string } | null;
 };
 export type HREvent = {
   id: string; employee_id: string; event_type: EventType; effective_date: string; end_date: string | null; reason: string | null;
@@ -27,6 +27,13 @@ const eventLabels: Record<EventType, string> = {
 const statusLabels = { pending: "قيد المراجعة", approved: "معتمد", rejected: "مرفوض" } as const;
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const employeeName = (employee: Pick<EffectEmployee, "full_name" | "first_name" | "last_name">) => employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" ");
+const whatsappNumber = (phone: string) => {
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("0")) digits = `218${digits.slice(1)}`;
+  else if (digits.length === 9 && digits.startsWith("9")) digits = `218${digits}`;
+  return digits;
+};
 
 export default function EffectsWorkspace({ role, userId, employeeId, branchId, employees, jobTitles, events }: {
   role: Role; userId: string; employeeId: string | null; branchId: string | null;
@@ -60,6 +67,7 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
   const isHeadOffice = role === "admin" || role === "hr";
   const isBranchManager = role === "branch_manager";
   const isEmployee = role === "employee";
+  const isAuditor = role === "auditor";
   const activeEmployees = employees.filter((employee) => employee.status === "active");
   const pendingCount = events.filter((event) => event.status === "pending").length;
 
@@ -216,13 +224,19 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
       <form className="effects-form-grid" onSubmit={recordDirectDeduction}><label className="wide">الموظف{employeeSelect(directEmployee, setDirectEmployee)}</label><label>تاريخ الخصم<input type="date" required value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} /></label><label>المبلغ بالدينار الليبي<input type="number" min="0.01" step="0.01" required value={directAmount} onChange={(event) => setDirectAmount(event.target.value)} /></label><label className="wide">سبب الخصم<textarea required rows={2} value={directReason} onChange={(event) => setDirectReason(event.target.value)} placeholder="السبب الذي سيظهر في سجل الموظف" /></label><button className="primary-button" type="submit" disabled={busy}>اعتماد وتسجيل الخصم</button></form>
     </section>}
 
-    <section className="panel effects-list-panel"><div className="effects-panel-heading"><div><h2>{isHeadOffice ? "طلبات وقرارات الفروع" : isBranchManager ? "سجل مؤثرات الفرع" : "طلباتي"}</h2><p>{isHeadOffice ? "اعتمد الإجازات وأذونات التأخير، وسجّل سبب كل قرار. اعتماد الخصم يسجله ضمن خصومات الرواتب." : "كل طلب أو إجراء يظهر بحالته وتاريخه وسببه."}</p></div>{isHeadOffice && <span className="effects-pending-badge">{toWesternDigits(pendingCount)} معلّق</span>}</div>
+    <section className="panel effects-list-panel"><div className="effects-panel-heading"><div><h2>{isHeadOffice || isAuditor ? "طلبات وقرارات الفروع" : isBranchManager ? "سجل مؤثرات الفرع" : "طلباتي"}</h2><p>{isAuditor ? "عرض للقراءة فقط لجميع الفروع." : isHeadOffice ? "اعتمد الإجازات وأذونات التأخير، وسجّل سبب كل قرار. اعتماد الخصم يسجله ضمن خصومات الرواتب." : "كل طلب أو إجراء يظهر بحالته وتاريخه وسببه."}</p></div>{isHeadOffice && <span className="effects-pending-badge">{toWesternDigits(pendingCount)} معلّق</span>}</div>
       {events.length ? <div className="effects-event-list">{events.map((item) => {
         const person = item.employee ? employeeName(item.employee) : "موظف";
         const time = typeof item.details?.requested_time === "string" ? item.details.requested_time : null;
         const canDecide = isHeadOffice && item.status === "pending";
         const leaveDiscount = leaveDiscountTypes[item.id] ?? "none";
         const employeeSalary = Number(employees.find((row) => row.id === item.employee_id)?.salary_amount);
+        const employeeRecord = employees.find((row) => row.id === item.employee_id);
+        const phone = employeeRecord?.phone?.trim();
+        const canSendDeductionNotice = isHeadOffice && item.status === "approved" && item.amount != null && item.amount > 0 && (item.event_type === "deduction" || item.event_type === "leave");
+        const waNumber = phone ? whatsappNumber(phone) : "";
+        const messageText = `السلام عليكم ${person}، نحيطكم علمًا بأنه تم تسجيل ${item.event_type === "leave" ? "خصم إجازة" : "خصم على الراتب"} بقيمة ${Number(item.amount ?? 0).toFixed(2)} د.ل. السبب: ${item.decision_reason || item.reason || "يرجى التواصل مع الموارد البشرية"}. تاريخ الإجراء: ${item.effective_date}. للاستفسار يرجى التواصل مع الموارد البشرية. شركة قرارة للرخام والجرانيت.`;
+        const whatsappHref = waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(messageText)}` : "";
         const leaveDailyRate = Number.isFinite(employeeSalary) ? employeeSalary / 30 : null;
         const leaveDiscountPreview = leaveDiscount === "fixed" ? Number(leaveDiscountValues[item.id]) : leaveDiscount === "days" ? (leaveDailyRate ?? 0) * Number(leaveDiscountValues[item.id]) : leaveDiscount === "half_day" ? (leaveDailyRate ?? 0) * 0.5 : leaveDiscount === "quarter_day" ? (leaveDailyRate ?? 0) * 0.25 : 0;
         return <article className="effects-event-card" key={item.id}>
@@ -232,6 +246,7 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
           {item.decision_reason && <p className="effects-decision-reason"><b>{item.status === "rejected" ? "سبب الرفض:" : "قرار الإدارة:"}</b> {item.decision_reason}</p>}
           {item.amount != null && item.event_type === "leave" && <span className="effects-payroll-note">خصم الإجازة: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</span>}
           {item.payroll_recorded_at && <span className="effects-payroll-note">تم تسجيله ضمن خصومات الراتب بتاريخ {toWesternDigits(item.payroll_recorded_at.slice(0, 10))}</span>}
+          {canSendDeductionNotice && (waNumber ? <a className="whatsapp-notice-button" href={whatsappHref} target="_blank" rel="noopener noreferrer">إرسال إشعار واتساب</a> : <span className="effects-no-phone-note">لا يمكن تجهيز الرسالة: رقم هاتف الموظف غير مسجل.</span>)}
           {canDecide && <div className="effects-decision"><label>سبب الاعتماد أو الرفض<textarea rows={2} required value={decisionReasons[item.id] ?? ""} onChange={(event) => setDecisionReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label>{item.event_type === "leave" && <div className="effects-leave-discount"><label>طريقة خصم الإجازة<select value={leaveDiscount} onChange={(event) => setLeaveDiscountTypes((current) => ({ ...current, [item.id]: event.target.value as typeof leaveDiscount }))}><option value="none">بدون خصم</option><option value="fixed">خصم مبلغ ثابت</option><option value="days">خصم بعدد الأيام</option><option value="half_day">خصم نصف يوم</option><option value="quarter_day">خصم ربع يوم</option></select></label>{leaveDiscount !== "none" && <><small>الراتب الشهري: {Number.isFinite(employeeSalary) && employeeSalary > 0 ? `${toWesternDigits(employeeSalary.toFixed(2))} د.ل` : "غير مسجل"} · أجر اليوم = الراتب ÷ 30 = {leaveDailyRate ? `${toWesternDigits(leaveDailyRate.toFixed(2))} د.ل` : "—"}</small>{(leaveDiscount === "fixed" || leaveDiscount === "days") && <label>{leaveDiscount === "fixed" ? "مبلغ الخصم بالدينار" : "عدد أيام الخصم"}<input type="number" min="0.01" step="0.01" required value={leaveDiscountValues[item.id] ?? ""} onChange={(event) => setLeaveDiscountValues((current) => ({ ...current, [item.id]: event.target.value }))} /></label>}<small>قيمة الخصم المتوقعة: {Number.isFinite(leaveDiscountPreview) && leaveDiscountPreview > 0 ? `${toWesternDigits(leaveDiscountPreview.toFixed(2))} د.ل` : "أدخل القيمة لحساب الخصم"}</small></>}</div>}<div>{item.event_type === "deduction" && <small>اعتماد الخصم يسجله ضمن خصومات الرواتب.</small>}<button type="button" className="primary-button" disabled={busy} onClick={() => decide(item, "approved")}>{item.event_type === "deduction" ? "اعتماد وتسجيل الخصم" : "اعتماد الطلب"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => decide(item, "rejected")}>رفض الطلب</button></div></div>}
         </article>;
       })}</div> : <p className="effects-empty-note">ما فيش طلبات أو مؤثرات مسجلة لحد الآن.</p>}

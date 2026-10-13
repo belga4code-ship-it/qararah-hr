@@ -39,7 +39,7 @@ export default async function Home() {
   ]);
 
   const employees = (employeeData ?? []) as Employee[];
-  const branches = ((branchData ?? []) as Branch[]).filter((branch) => profile.role === "admin" || profile.role === "hr" || branch.id === profile.branch_id);
+  const branches = ((branchData ?? []) as Branch[]).filter((branch) => ["admin", "hr", "auditor"].includes(profile.role) || branch.id === profile.branch_id);
   const attendance = (todayData ?? []) as unknown as Attendance[];
   const week = weekData ?? [];
   const presentCount = attendance.filter((row) => ["present", "late", "on_mission"].includes(row.status)).length;
@@ -61,12 +61,12 @@ export default async function Home() {
   const largestDay = Math.max(1, ...weekDays.map((day) => day.present + day.late));
   const todayLabel = new Intl.DateTimeFormat("ar-LY-u-nu-latn", { dateStyle: "full", timeZone: "Africa/Tripoli" }).format(now);
   const displayName = profile.full_name || user.email || "مستخدم النظام";
-  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
+  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
 
   return (
     <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الرئيسية">
         <div className="page-content">
-          <div className="welcome-row"><div><p className="eyebrow">{todayLabel}</p><h1>الرئيسية</h1><p className="welcome-copy">نظرة عامة على شؤون الموظفين والحضور في الفروع المصرح بها لحسابك.</p></div><Link className="primary-button" href="/employees"><span>♙</span> إدارة الموظفين</Link></div>
+          <div className="welcome-row"><div><p className="eyebrow">{todayLabel}</p><h1>الرئيسية</h1><p className="welcome-copy">نظرة عامة على شؤون الموظفين والحضور في الفروع المصرح بها لحسابك.</p></div>{profile.role !== "employee" && <Link className="primary-button" href="/employees"><span>♙</span> إدارة الموظفين</Link>}</div>
 
           <div className="stats-grid">
             <article className="stat-card"><div className="stat-top"><span className="stat-label">الموظفون النشطون</span><span className="stat-icon blue">♙</span></div><div className="stat-value">{employees.length}</div><div className="stat-foot"><span>حسب بيانات قاعدة الشركة</span></div></article>

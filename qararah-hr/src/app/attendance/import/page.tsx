@@ -17,7 +17,7 @@ export default async function AttendanceImportPage() {
   if (!(profile.role === "admin" || profile.role === "hr")) redirect("/attendance");
 
   const userName = profile.full_name || user.email || "مستخدم النظام";
-  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : "مدير الفرع";
+  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : "مدير الفرع";
 
   return (
     <EmployeeWorkspace userName={userName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="استيراد الحضور">

@@ -17,9 +17,10 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   if (!user) redirect("/login");
   const { data: profile } = await supabase.from("profiles").select("full_name,role").eq("id", user.id).maybeSingle();
   if (!profile) redirect("/setup-required");
+  if (profile.role === "employee") redirect("/");
 
   const userName = profile.full_name || user.email || "مستخدم النظام";
-  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "الموارد البشرية" : "مدير الفرع";
+  const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "accountant" ? "محاسب" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
   const params = await searchParams;
   const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const validDate = (value?: string) => { if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const date = new Date(`${value}T12:00:00Z`); return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value; };
@@ -53,7 +54,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
       <main className="attendance-page page-content" dir="rtl">
         <section className="attendance-welcome">
           <div><p className="eyebrow">متابعة الدوام</p><h1>الحضور والانصراف</h1><p className="welcome-copy">الفترة المحددة: {periodSummary} · سجلات الحضور والانصراف المستوردة.</p></div>
-          <div className="attendance-page-actions"><MonthlyTardinessExport month={selectedMonth} /><Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link><Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link></div>
+          <div className="attendance-page-actions"><MonthlyTardinessExport month={selectedMonth} />{["admin", "hr", "auditor"].includes(profile.role) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{["admin", "hr"].includes(profile.role) && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
         </section>
 
         <div className="attendance-stats">
