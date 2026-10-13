@@ -35,7 +35,7 @@ export default function EmployeeWorkspace({ children, userName, email, roleLabel
       <div className="employee-sidebar-footer"><div className="employee-sidebar-user"><span className="employee-sidebar-avatar">{userName.trim().charAt(0) || "م"}</span><div><strong>{userName}</strong><small>{roleLabel}</small></div></div><div className="employee-sidebar-status"><i />نظام الموارد البشرية</div><LogoutButton /></div>
     </aside>
     <section className="workspace employee-workspace">
-      <header className="topbar"><div className="breadcrumb"><Link href="/">نظام الموارد البشرية</Link><span>/</span>{breadcrumb}</div><div className="profile"><div className="avatar">{userName.trim().charAt(0) || "م"}</div><div><strong>{userName}</strong><span>{roleLabel} · {email}</span></div></div></header>
+      <header className="topbar"><div className="breadcrumb"><Link href="/">نظام الموارد البشرية</Link><span>/</span>{breadcrumb}</div><div className="mobile-account-actions"><LogoutButton /></div><div className="profile"><div className="avatar">{userName.trim().charAt(0) || "م"}</div><div><strong>{userName}</strong><span>{roleLabel} · {email}</span></div></div></header>
       {children}
     </section>
   </main>;

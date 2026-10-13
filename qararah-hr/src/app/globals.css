@@ -184,3 +184,38 @@ body,.app-shell{background:#f1f5f9;color:#0f172a}
 @media(max-width:650px){.effects-page{padding:17px 12px 30px}.effects-welcome{min-height:0;padding:20px 17px}.effects-welcome:after{left:-36%;top:-62px}.effects-welcome h1{font-size:24px}.effects-welcome .welcome-copy{font-size:11px}.effects-summary-row{grid-template-columns:1fr 1fr;gap:8px}.effects-summary-row article{min-height:76px;grid-template-columns:1fr auto;gap:4px 8px;padding:11px 12px}.effects-summary-row article:before{inset-block:13px}.effects-summary-row span{font-size:9px}.effects-summary-row strong{grid-row:auto;grid-column:2;font-size:22px}.effects-summary-row article:last-child{grid-column:1/-1}.effects-form-panel,.effects-list-panel{padding:16px 13px}.effects-panel-heading{gap:8px}.effects-panel-heading p{font-size:10px}.effects-role-badge,.effects-pending-badge{padding:6px 8px;font-size:9px}.effects-event-top{gap:8px}.effects-event-top h3{font-size:12px}.effects-event-card{padding:13px 11px}.effects-event-meta{gap:6px}.effects-event-meta span,.effects-event-meta strong{padding:4px 6px;font-size:9px}.effects-decision>div{align-items:stretch}.effects-decision .primary-button,.effects-decision .secondary-button{flex:1;justify-content:center}}
 
 .evaluations-toolbar .evaluations-search{flex:1;min-width:210px}.evaluations-toolbar .evaluations-search input{width:100%}@media(max-width:760px){.evaluations-toolbar .evaluations-search{flex-basis:100%;min-width:0}}
+
+.workforce-panel{margin-bottom:17px}.workforce-total{padding:7px 11px;border:1px solid #d9ebe4;border-radius:20px;background:#eef8f3;color:#14735f;font-size:11px;font-weight:700;white-space:nowrap}.workforce-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-top:15px}.workforce-item{display:flex;align-items:center;justify-content:space-between;gap:9px;min-height:57px;padding:11px 13px;border:1px solid #e8eeeb;border-radius:9px;background:#fbfdfc}.workforce-item span{color:#5f706b;font-size:11px;line-height:1.6}.workforce-item strong{display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;border-radius:8px;background:#eaf5f1;color:#14735f;font-size:14px}
+
+/* Simple phone navigation for every employee role */
+.mobile-account-actions{display:none}
+@media(max-width:700px){
+  .employee-shell .employee-sidebar{position:fixed;z-index:40;inset-inline:0;bottom:0;top:auto;width:auto;height:auto;max-height:calc(84px + env(safe-area-inset-bottom));padding:6px 8px calc(6px + env(safe-area-inset-bottom));overflow:hidden;border:0;border-top:1px solid #dbe2ea;background:#fff;box-shadow:0 -4px 16px #0f172a0d}
+  .employee-shell .employee-sidebar>div:first-child{display:block}
+  .employee-shell .employee-brand,.employee-shell .menu-caption,.employee-shell .employee-sidebar-footer{display:none}
+  .employee-shell .nav-list{display:flex;gap:4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+  .employee-shell .nav-list::-webkit-scrollbar{display:none}
+  .employee-shell .nav-item{display:flex;flex:1 0 78px;flex-direction:column;justify-content:center;gap:3px;min-width:68px;height:58px;padding:5px 4px;border-radius:9px;color:#526174;font-size:9px;line-height:1.2;text-align:center;white-space:nowrap}
+  .employee-shell .nav-item>span:not(.nav-icon){display:block!important;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .employee-shell .nav-icon{width:auto;font-size:17px;line-height:1}
+  .employee-shell .nav-item.active{background:#eff6ff;color:#1d4ed8}
+  .employee-workspace{padding-bottom:calc(78px + env(safe-area-inset-bottom))}
+  .employee-shell .topbar{position:sticky;top:0;z-index:30;height:58px;padding:0 13px;background:#ffffffed;backdrop-filter:blur(10px)}
+  .employee-shell .breadcrumb{font-size:11px}
+  .employee-shell .profile{margin-right:auto}
+  .employee-shell .profile .avatar{width:31px;height:31px}
+  .employee-shell .profile>div:nth-child(2){display:block;max-width:115px;overflow:hidden}
+  .employee-shell .profile strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+  .employee-shell .profile span{display:none}
+  .mobile-account-actions{display:block;margin-inline-start:10px}
+  .mobile-account-actions .logout-button{width:auto;min-height:36px;padding:7px 10px;border-color:#dbe2ea;background:#f8fafc;color:#475569;font-size:10px;box-shadow:none}
+  .mobile-account-actions .logout-button:hover:not(:disabled){background:#eff6ff;color:#1d4ed8}
+  .mobile-account-actions .logout-icon{font-size:15px}
+  .employee-shell .page-content{padding:16px 12px 24px}
+  .employee-workspace .page-content>.welcome-row{margin-bottom:14px;padding:16px 14px;border-radius:12px}
+  .employee-workspace .page-content>.welcome-row h1{font-size:21px}
+  .employee-workspace .welcome-copy{font-size:11px;line-height:1.7}
+  .employee-shell .primary-button,.employee-shell .secondary-button{min-height:42px}
+  .employee-shell input,.employee-shell select,.employee-shell textarea{font-size:16px}
+  .employee-shell .panel{border-radius:12px}
+}

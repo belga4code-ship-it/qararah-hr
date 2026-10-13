@@ -6,7 +6,7 @@ import { toWesternDigits } from "@/lib/digits";
 
 export const instant = false;
 
-type Employee = { id: string; employee_number: string; first_name: string; last_name: string | null; branch_id: string; status: string };
+type Employee = { id: string; employee_number: string; first_name: string; last_name: string | null; branch_id: string; status: string; job_title: { name: string } | null };
 type Attendance = { employee_id: string; status: string; first_in: string | null; last_out: string | null; attendance_date: string; exception_note: string | null; employee: { employee_number: string; first_name: string; last_name: string | null } | null; branch: { name: string } | null };
 type Branch = { id: string; name: string };
 
@@ -32,13 +32,18 @@ export default async function Home() {
   weekStartDate.setDate(weekStartDate.getDate() - 6);
   const weekStart = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(weekStartDate);
   const [{ data: employeeData }, { data: branchData }, { data: todayData }, { data: weekData }] = await Promise.all([
-    supabase.from("employees").select("id,employee_number,first_name,last_name,branch_id,status").eq("status", "active"),
+    supabase.from("employees").select("id,employee_number,first_name,last_name,branch_id,status,job_title:job_titles(name)").eq("status", "active"),
     supabase.from("branches").select("id,name").eq("is_active", true).order("name"),
     supabase.from("attendance_records").select("employee_id,status,first_in,last_out,attendance_date,exception_note,employee:employees(employee_number,first_name,last_name),branch:branches(name)").eq("attendance_date", today),
     supabase.from("attendance_records").select("attendance_date,status").gte("attendance_date", weekStart).lte("attendance_date", today),
   ]);
 
   const employees = (employeeData ?? []) as Employee[];
+  const jobTitleCounts = [...employees.reduce((counts, employee) => {
+    const title = employee.job_title?.name?.trim() || "بدون مسمى وظيفي";
+    counts.set(title, (counts.get(title) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ar"));
   const branches = ((branchData ?? []) as Branch[]).filter((branch) => ["admin", "hr", "auditor"].includes(profile.role) || branch.id === profile.branch_id);
   const attendance = (todayData ?? []) as unknown as Attendance[];
   const week = weekData ?? [];
@@ -74,6 +79,8 @@ export default async function Home() {
             <article className="stat-card"><div className="stat-top"><span className="stat-label">تأخروا عن الدوام</span><span className="stat-icon amber">◷</span></div><div className="stat-value">{lateCount} <small>موظف</small></div><div className="stat-foot"><span>في {new Set(attendance.filter((row) => row.status === "late").map((row) => row.branch?.name).filter(Boolean)).size} فروع</span></div></article>
             <article className="stat-card"><div className="stat-top"><span className="stat-label">حالات تحتاج مراجعة</span><span className="stat-icon rose">!</span></div><div className="stat-value">{reviewCount} <small>حالة</small></div><div className="stat-foot"><span>حسب سجلات البصمة المعتمدة</span></div></article>
           </div>
+
+          <section className="panel workforce-panel"><div className="panel-heading"><div><h2>توزيع الموظفين حسب الصفة</h2><p>عدد الموظفين النشطين في كل وظيفة</p></div><span className="workforce-total">الإجمالي: {toWesternDigits(employees.length)}</span></div><div className="workforce-grid">{jobTitleCounts.length ? jobTitleCounts.map(([title, count]) => <article className="workforce-item" key={title}><span>{title}</span><strong>{toWesternDigits(count)}</strong></article>) : <p className="empty-message">لا توجد بيانات موظفين.</p>}</div></section>
 
           <div className="content-grid">
             <section className="panel attendance-panel">
