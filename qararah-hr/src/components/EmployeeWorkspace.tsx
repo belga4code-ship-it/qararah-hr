@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import LogoutButton from "@/components/LogoutButton";
+import MobileWorkspaceNavigation from "@/components/MobileWorkspaceNavigation";
 
 const navigation = [
   { label: "الرئيسية", href: "/", icon: "⌂", breadcrumb: "الرئيسية" },
@@ -19,15 +20,12 @@ const navigation = [
   { label: "التقارير", href: "/attendance/report", icon: "▥", breadcrumb: "التقرير الأسبوعي" },
 ];
 
-const employeeMobileNavigation = [
-  { label: "طلب إذن", href: "/effects", icon: "◷", breadcrumb: "المؤثرات الأسبوعية" },
-  { label: "أهدافي", href: "/goals", icon: "◎", breadcrumb: "أهدافي" },
-  { label: "تقييماتي", href: "/my-evaluations", icon: "☆", breadcrumb: "تقييماتي" },
-  { label: "الإبلاغ", href: "/report", icon: "!", breadcrumb: "الإبلاغ" },
-];
-
 export default function EmployeeWorkspace({ children, userName, email, roleLabel, breadcrumb }: { children: ReactNode; userName: string; email: string; roleLabel: string; breadcrumb: string }) {
   const isBasicEmployee = roleLabel.startsWith("موظف");
+  const mobileItems = navigation.filter((item): item is typeof item & { href: string } => typeof item.href === "string"
+    && (!isBasicEmployee || ["/", "/effects", "/goals", "/my-evaluations", "/report"].includes(item.href))
+    && !(roleLabel === "مراجع حسابات" && ["/employees/import", "/attendance/import"].includes(item.href))
+    && !(item.href === "/audit" && !["مدير النظام", "الإدارة الرئيسية", "مدير الموارد البشرية", "الموارد البشرية"].includes(roleLabel)));
   return <main className={`app-shell employee-shell${isBasicEmployee ? " mobile-employee-shell" : ""}`} dir="rtl">
     <aside className="sidebar employee-sidebar">
       <div>
@@ -49,6 +47,6 @@ export default function EmployeeWorkspace({ children, userName, email, roleLabel
       <header className="topbar"><div className="breadcrumb"><Link href="/">نظام الموارد البشرية</Link><span>/</span>{breadcrumb}</div><div className="mobile-account-actions"><LogoutButton /></div><div className="profile"><div className="avatar">{userName.trim().charAt(0) || "م"}</div><div><strong>{userName}</strong><span>{roleLabel} · {email}</span></div></div></header>
       {children}
     </section>
-    {isBasicEmployee && <nav className="employee-app-nav" aria-label="قائمة الموظف على الهاتف">{employeeMobileNavigation.map((item) => <Link className={`employee-app-nav-item${breadcrumb === item.breadcrumb ? " active" : ""}`} href={item.href} key={item.href}><span aria-hidden="true">{item.icon}</span><small>{item.label}</small></Link>)}</nav>}
+    <MobileWorkspaceNavigation items={mobileItems} roleLabel={roleLabel} breadcrumb={breadcrumb} />
   </main>;
 }

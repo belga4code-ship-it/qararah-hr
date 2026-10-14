@@ -7,7 +7,7 @@ import WorkforceDistribution from "./WorkforceDistribution";
 
 export const instant = false;
 
-type Employee = { id: string; employee_number: string; first_name: string; last_name: string | null; branch_id: string; status: string; job_title: { name: string } | null };
+type Employee = { id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null; branch_id: string; status: string; hired_on: string | null; job_title: { name: string } | null; branch: { name: string } | null; department: { name: string } | null };
 type Attendance = { employee_id: string; status: string; first_in: string | null; last_out: string | null; attendance_date: string; exception_note: string | null; employee: { employee_number: string; first_name: string; last_name: string | null } | null; branch: { name: string } | null };
 type Branch = { id: string; name: string };
 
@@ -33,15 +33,17 @@ export default async function Home() {
   weekStartDate.setDate(weekStartDate.getDate() - 6);
   const weekStart = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(weekStartDate);
   const [{ data: employeeData }, { data: branchData }, { data: todayData }, { data: weekData }] = await Promise.all([
-    supabase.from("employees").select("id,employee_number,first_name,last_name,branch_id,status,job_title:job_titles(name)").eq("status", "active"),
+    supabase.from("employees").select("id,employee_number,first_name,last_name,full_name,branch_id,status,hired_on,job_title:job_titles(name),branch:branches(name),department:departments(name)").eq("status", "active"),
     supabase.from("branches").select("id,name").eq("is_active", true).order("name"),
     supabase.from("attendance_records").select("employee_id,status,first_in,last_out,attendance_date,exception_note,employee:employees(employee_number,first_name,last_name),branch:branches(name)").eq("attendance_date", today),
     supabase.from("attendance_records").select("attendance_date,status").gte("attendance_date", weekStart).lte("attendance_date", today),
   ]);
 
-  const employees = ((employeeData ?? []) as unknown as Array<Omit<Employee, "job_title"> & { job_title: { name: string } | { name: string }[] | null }>).map((employee) => ({
+  const employees = ((employeeData ?? []) as unknown as Array<Omit<Employee, "job_title" | "branch" | "department"> & { job_title: { name: string } | { name: string }[] | null; branch: { name: string } | { name: string }[] | null; department: { name: string } | { name: string }[] | null }>).map((employee) => ({
     ...employee,
     job_title: Array.isArray(employee.job_title) ? employee.job_title[0] ?? null : employee.job_title,
+    branch: Array.isArray(employee.branch) ? employee.branch[0] ?? null : employee.branch,
+    department: Array.isArray(employee.department) ? employee.department[0] ?? null : employee.department,
   })) as Employee[];
   const branches = ((branchData ?? []) as Branch[]).filter((branch) => ["admin", "hr", "auditor"].includes(profile.role) || branch.id === profile.branch_id);
   const attendance = (todayData ?? []) as unknown as Attendance[];
@@ -79,7 +81,7 @@ export default async function Home() {
             <article className="stat-card"><div className="stat-top"><span className="stat-label">حالات تحتاج مراجعة</span><span className="stat-icon rose">!</span></div><div className="stat-value">{reviewCount} <small>حالة</small></div><div className="stat-foot"><span>حسب سجلات البصمة المعتمدة</span></div></article>
           </div>
 
-          <section className="panel workforce-panel"><div className="panel-heading"><div><h2>توزيع الموظفين حسب الصفة</h2><p>اضغط على الصفة لعرض الموظفين النشطين بها</p></div><span className="workforce-total">الإجمالي: {toWesternDigits(employees.length)}</span></div><WorkforceDistribution employees={employees} /></section>
+          <section className="panel workforce-panel"><div className="panel-heading"><div><h2>توزيع الموظفين حسب الصفة</h2><p>اضغط على الصفة لعرض الموظفين النشطين بها</p></div><span className="workforce-total">الإجمالي: {toWesternDigits(employees.length)}</span></div><WorkforceDistribution employees={employees} canManage={profile.role === "admin" || profile.role === "hr"} canAuditEvaluate={profile.role === "auditor"} /></section>
 
           <div className="content-grid">
             <section className="panel attendance-panel">

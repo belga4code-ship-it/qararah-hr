@@ -220,20 +220,20 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
       </section>
     </div>}
 
-    {isHeadOffice && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تسجيل خصم على الراتب</h2><p>الخصم يُحفظ مع المبلغ والسبب والموظف كإجراء معتمد ومرحّل للراتب.</p></div><span className="effects-role-badge head-office">الإدارة الرئيسية</span></div>
+    {(isHeadOffice || isAuditor) && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تسجيل خصم على الراتب</h2><p>الخصم يُحفظ مع المبلغ والسبب والموظف كإجراء معتمد ومرحّل للراتب.</p></div><span className="effects-role-badge head-office">{isAuditor ? "مراجع حسابات" : "الإدارة الرئيسية"}</span></div>
       <form className="effects-form-grid" onSubmit={recordDirectDeduction}><label className="wide">الموظف{employeeSelect(directEmployee, setDirectEmployee)}</label><label>تاريخ الخصم<input type="date" required value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} /></label><label>المبلغ بالدينار الليبي<input type="number" min="0.01" step="0.01" required value={directAmount} onChange={(event) => setDirectAmount(event.target.value)} /></label><label className="wide">سبب الخصم<textarea required rows={2} value={directReason} onChange={(event) => setDirectReason(event.target.value)} placeholder="السبب الذي سيظهر في سجل الموظف" /></label><button className="primary-button" type="submit" disabled={busy}>اعتماد وتسجيل الخصم</button></form>
     </section>}
 
-    <section className="panel effects-list-panel"><div className="effects-panel-heading"><div><h2>{isHeadOffice || isAuditor ? "طلبات وقرارات الفروع" : isBranchManager ? "سجل مؤثرات الفرع" : "طلباتي"}</h2><p>{isAuditor ? "عرض للقراءة فقط لجميع الفروع." : isHeadOffice ? "اعتمد الإجازات وأذونات التأخير، وسجّل سبب كل قرار. اعتماد الخصم يسجله ضمن خصومات الرواتب." : "كل طلب أو إجراء يظهر بحالته وتاريخه وسببه."}</p></div>{isHeadOffice && <span className="effects-pending-badge">{toWesternDigits(pendingCount)} معلّق</span>}</div>
+    <section className="panel effects-list-panel"><div className="effects-panel-heading"><div><h2>{isHeadOffice || isAuditor ? "طلبات وقرارات الفروع" : isBranchManager ? "سجل مؤثرات الفرع" : "طلباتي"}</h2><p>{isAuditor ? "يمكنك تسجيل الخصومات واعتماد طلبات الخصم فقط؛ بقية الطلبات للعرض والتدقيق." : isHeadOffice ? "اعتمد الإجازات وأذونات التأخير، وسجّل سبب كل قرار. اعتماد الخصم يسجله ضمن خصومات الرواتب." : "كل طلب أو إجراء يظهر بحالته وتاريخه وسببه."}</p></div>{(isHeadOffice || isAuditor) && <span className="effects-pending-badge">{toWesternDigits(pendingCount)} معلّق</span>}</div>
       {events.length ? <div className="effects-event-list">{events.map((item) => {
         const person = item.employee ? employeeName(item.employee) : "موظف";
         const time = typeof item.details?.requested_time === "string" ? item.details.requested_time : null;
-        const canDecide = isHeadOffice && item.status === "pending";
+        const canDecide = (isHeadOffice || (isAuditor && item.event_type === "deduction")) && item.status === "pending";
         const leaveDiscount = leaveDiscountTypes[item.id] ?? "none";
         const employeeSalary = Number(employees.find((row) => row.id === item.employee_id)?.salary_amount);
         const employeeRecord = employees.find((row) => row.id === item.employee_id);
         const phone = employeeRecord?.phone?.trim();
-        const canSendDeductionNotice = isHeadOffice && item.status === "approved" && item.amount != null && item.amount > 0 && (item.event_type === "deduction" || item.event_type === "leave");
+        const canSendDeductionNotice = (isHeadOffice || isAuditor) && item.status === "approved" && item.amount != null && item.amount > 0 && (item.event_type === "deduction" || (isHeadOffice && item.event_type === "leave"));
         const waNumber = phone ? whatsappNumber(phone) : "";
         const messageText = `السلام عليكم ${person}، نحيطكم علمًا بأنه تم تسجيل ${item.event_type === "leave" ? "خصم إجازة" : "خصم على الراتب"} بقيمة ${Number(item.amount ?? 0).toFixed(2)} د.ل. السبب: ${item.decision_reason || item.reason || "يرجى التواصل مع الموارد البشرية"}. تاريخ الإجراء: ${item.effective_date}. للاستفسار يرجى التواصل مع الموارد البشرية. شركة قرارة للرخام والجرانيت.`;
         const whatsappHref = waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(messageText)}` : "";
@@ -251,6 +251,6 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
         </article>;
       })}</div> : <p className="effects-empty-note">ما فيش طلبات أو مؤثرات مسجلة لحد الآن.</p>}
     </section>
-    {isHeadOffice && <p className="effects-footnote">تسجيل الخصم هنا يحفظ مبلغ الخصم وسببه واعتماده في سجل الموارد البشرية؛ حساب صافي المرتب يحتاج ربطه بوحدة مسير الرواتب عند تجهيزها.</p>}
+    {(isHeadOffice || isAuditor) && <p className="effects-footnote">تسجيل الخصم هنا يحفظ مبلغ الخصم وسببه واعتماده في سجل الموارد البشرية؛ حساب صافي المرتب يحتاج ربطه بوحدة مسير الرواتب عند تجهيزها.</p>}
   </div>;
 }

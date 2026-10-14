@@ -125,7 +125,7 @@ export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, 
       const average = employeeEvals.length ? employeeEvals.reduce((sum, item) => sum + (Number(item.total_score ?? 0) / Number(item.max_score || 1)) * 100, 0) / employeeEvals.length : null;
       const pendingOther = expected > employeeEvals.length;
       const choices = assignmentChoices[employee.id] ?? ["", ""];
-      const canEvaluate = assignedEmployeeIds.has(employee.id);
+      const canEvaluate = assignedEmployeeIds.has(employee.id) || role === "auditor";
       const myEvaluation = evaluations.find((item) => item.employee_id === employee.id && item.evaluator_id === userId);
       const employeeScores = scores[employee.id] ?? seedScores(employee.job_title_name);
       const rawTotal = employeeScores.reduce((sum, item) => sum + item.score, 0);
