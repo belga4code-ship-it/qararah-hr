@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import { toWesternDigits } from "@/lib/digits";
+import WorkforceDistribution from "./WorkforceDistribution";
 
 export const instant = false;
 
@@ -42,11 +43,6 @@ export default async function Home() {
     ...employee,
     job_title: Array.isArray(employee.job_title) ? employee.job_title[0] ?? null : employee.job_title,
   })) as Employee[];
-  const jobTitleCounts = [...employees.reduce((counts, employee) => {
-    const title = employee.job_title?.name?.trim() || "بدون مسمى وظيفي";
-    counts.set(title, (counts.get(title) ?? 0) + 1);
-    return counts;
-  }, new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ar"));
   const branches = ((branchData ?? []) as Branch[]).filter((branch) => ["admin", "hr", "auditor"].includes(profile.role) || branch.id === profile.branch_id);
   const attendance = (todayData ?? []) as unknown as Attendance[];
   const week = weekData ?? [];
@@ -83,7 +79,7 @@ export default async function Home() {
             <article className="stat-card"><div className="stat-top"><span className="stat-label">حالات تحتاج مراجعة</span><span className="stat-icon rose">!</span></div><div className="stat-value">{reviewCount} <small>حالة</small></div><div className="stat-foot"><span>حسب سجلات البصمة المعتمدة</span></div></article>
           </div>
 
-          <section className="panel workforce-panel"><div className="panel-heading"><div><h2>توزيع الموظفين حسب الصفة</h2><p>عدد الموظفين النشطين في كل وظيفة</p></div><span className="workforce-total">الإجمالي: {toWesternDigits(employees.length)}</span></div><div className="workforce-grid">{jobTitleCounts.length ? jobTitleCounts.map(([title, count]) => <article className="workforce-item" key={title}><span>{title}</span><strong>{toWesternDigits(count)}</strong></article>) : <p className="empty-message">لا توجد بيانات موظفين.</p>}</div></section>
+          <section className="panel workforce-panel"><div className="panel-heading"><div><h2>توزيع الموظفين حسب الصفة</h2><p>اضغط على الصفة لعرض الموظفين النشطين بها</p></div><span className="workforce-total">الإجمالي: {toWesternDigits(employees.length)}</span></div><WorkforceDistribution employees={employees} /></section>
 
           <div className="content-grid">
             <section className="panel attendance-panel">
