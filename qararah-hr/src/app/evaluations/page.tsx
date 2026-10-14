@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccessProfile } from "@/lib/supabase/profile";
 import EvaluationsWorkspace, { type EvaluationAssignment, type EvaluationRecord, type EvaluatorOption, type EvaluatedEmployee } from "./EvaluationsWorkspace";
 
 export const instant = false;
@@ -16,15 +17,20 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase.from("profiles").select("id,full_name,role,branch_id,employee_id").eq("id", user.id).maybeSingle();
+  const { data: profile } = await loadAccessProfile<{ id: string; full_name: string | null; role: string; branch_id: string | null; employee_id: string | null }>(supabase, user.id, "id,full_name,role,user_roles,additional_permissions,branch_id,employee_id", "id,full_name,role,branch_id,employee_id");
   if (!profile) redirect("/setup-required");
-  const isAuditor = profile.role === "auditor";
-  const isHR = profile.role === "admin" || profile.role === "hr";
+  const roles = [...new Set([profile.role, ...((profile.user_roles as string[] | null) ?? [])])];
+  const permissions = (profile.additional_permissions as string[] | null) ?? [];
+  const isAuditor = roles.includes("auditor");
+  const isHR = roles.some((role) => ["admin", "hr"].includes(role));
+  const canAssignEvaluators = isHR || permissions.includes("evaluations.assign");
+  const canEvaluateAll = isAuditor || permissions.includes("evaluations.evaluate");
+  const canViewAll = isHR || isAuditor || canAssignEvaluators || canEvaluateAll || permissions.includes("evaluations.view_all");
   const { data: assignmentData } = await supabase
     .from("employee_evaluators")
     .select("employee_id,slot,evaluator_profile_id,evaluator_employee_id,evaluator_employee:employees!employee_evaluators_evaluator_employee_id_fkey(id,employee_number,first_name,last_name,full_name,job_title:job_titles(name),branch:branches(name))");
-  const visibleAssignments = isHR ? assignmentData ?? [] : (assignmentData ?? []).filter((row) => row.evaluator_profile_id === user.id || (profile.employee_id && row.evaluator_employee_id === profile.employee_id));
-  if (!isHR && !isAuditor && !visibleAssignments.length) redirect("/");
+  const visibleAssignments = canAssignEvaluators || isAuditor || canEvaluateAll || permissions.includes("evaluations.view_all") ? assignmentData ?? [] : (assignmentData ?? []).filter((row) => row.evaluator_profile_id === user.id || (profile.employee_id && row.evaluator_employee_id === profile.employee_id));
+  if (!canViewAll && !visibleAssignments.length) redirect("/");
   const assignedIds = [...new Set(visibleAssignments.map((row) => row.employee_id))];
 
   const employeeQuery = supabase
@@ -32,9 +38,9 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
     .select("id,employee_number,first_name,last_name,full_name,status,branch_id,job_title:job_titles(name),branch:branches(name)")
     .order("employee_number");
   const [{ data: employeeData }, { data: evaluationData }, { data: evaluatorProfiles }] = await Promise.all([
-    isHR || isAuditor ? employeeQuery : assignedIds.length ? employeeQuery.in("id", assignedIds) : Promise.resolve({ data: [] }),
+    canViewAll ? employeeQuery : assignedIds.length ? employeeQuery.in("id", assignedIds) : Promise.resolve({ data: [] }),
     supabase.from("evaluations").select("id,employee_id,period_month,evaluator_id,total_score,max_score,status,notes,evaluation_items(criterion,score,max_score,evidence)").eq("period_month", monthStart),
-    isHR ? supabase.from("profiles").select("employee_id") : Promise.resolve({ data: [] }),
+    canAssignEvaluators ? supabase.from("profiles").select("employee_id") : Promise.resolve({ data: [] }),
   ]);
 
   const employees = (employeeData ?? []).map((row) => {
@@ -57,7 +63,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
     <main className="evaluations-page page-content" dir="rtl">
       <section className="evaluations-welcome"><div><p className="eyebrow">تقييم أداء الكادر الإداري</p><h1>التقييمات الشهرية</h1><p className="welcome-copy">كل مسؤول يقيّم بشكل مستقل، وتظهر النتيجة النهائية كمتوسط التقييمات المقدمة.</p></div></section>
       <EvaluationsWorkspace
-        role={profile.role}
+        role={profile.role as "admin" | "hr" | "branch_manager" | "accountant" | "employee" | "auditor"}
         userId={user.id}
         profileEmployeeId={profile.employee_id}
         month={month}
@@ -65,6 +71,8 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
         assignments={(visibleAssignments ?? []) as unknown as EvaluationAssignment[]}
         evaluators={evaluators as EvaluatorOption[]}
         evaluations={(evaluationData ?? []) as unknown as EvaluationRecord[]}
+        canAssignEvaluators={canAssignEvaluators}
+        canEvaluateAll={canEvaluateAll}
       />
     </main>
   </EmployeeWorkspace>;

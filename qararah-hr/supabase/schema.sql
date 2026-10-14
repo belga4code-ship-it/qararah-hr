@@ -19,6 +19,8 @@ create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null,
   role public.app_role not null default 'employee',
+  user_roles text[] not null default '{}'::text[],
+  additional_permissions text[] not null default '{}'::text[],
   branch_id uuid references public.branches(id) on delete set null,
   created_at timestamptz not null default now()
 );
@@ -148,6 +150,18 @@ returns public.app_role
 language sql stable security definer
 set search_path = public
 as $$ select role from public.profiles where id = auth.uid() $$;
+
+create function public.current_user_has_role(p_role text)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$ select exists (select 1 from public.profiles p where p.id = auth.uid() and (p.role::text = p_role or p_role = any(coalesce(p.user_roles, '{}'::text[])))) $$;
+
+create function public.current_user_has_permission(p_permission text)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$ select exists (select 1 from public.profiles p where p.id = auth.uid() and p_permission = any(coalesce(p.additional_permissions, '{}'::text[]))) $$;
 
 create function public.current_branch_id()
 returns uuid

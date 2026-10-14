@@ -5,20 +5,22 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toWesternDigits } from "@/lib/digits";
+import EffectsReportExport from "./EffectsReportExport";
 
-type Role = "admin" | "hr" | "branch_manager" | "employee" | "auditor";
+type Role = "admin" | "hr" | "branch_manager" | "employee" | "auditor" | "accountant";
 type EventType = "new_hire" | "leave" | "termination" | "deduction" | "mission" | "late_permission" | "permission";
 export type EffectEmployee = {
   id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null;
-  status: string; branch_id: string; salary_amount?: number | null; phone?: string | null; job_title: { name: string } | null; branch: { name: string } | null;
+  status: string; branch_id: string; salary_amount?: number | null; phone?: string | null; job_title: { name: string } | null; department?: { name: string } | null; branch: { name: string } | null;
 };
 export type HREvent = {
   id: string; employee_id: string; event_type: EventType; effective_date: string; end_date: string | null; reason: string | null;
   amount: number | null; amount_unit: string | null; status: "pending" | "approved" | "rejected";
-  decision_reason: string | null; decision_at: string | null; payroll_recorded_at: string | null;
+  decision_reason: string | null; decision_at: string | null; payroll_recorded_at: string | null; approved_at?: string | null;
   details: Record<string, unknown> | null; created_at: string;
   employee: { employee_number: string; first_name: string; last_name: string | null; full_name: string | null; branch: { name: string } | null } | null;
 };
+export type ApprovalStep = { id: string; event_id: string; step_order: number; approver_role: "branch_manager" | "auditor" | "hr"; status: "pending" | "approved" | "rejected" | "skipped"; decided_by: string | null; decided_at: string | null; reason: string | null };
 
 const eventLabels: Record<EventType, string> = {
   new_hire: "تعيين جديد", leave: "إجازة", termination: "إنهاء خدمة", deduction: "خصم من الراتب",
@@ -35,14 +37,16 @@ const whatsappNumber = (phone: string) => {
   return digits;
 };
 
-export default function EffectsWorkspace({ role, userId, employeeId, branchId, employees, jobTitles, events }: {
-  role: Role; userId: string; employeeId: string | null; branchId: string | null;
-  employees: EffectEmployee[]; jobTitles: { id: string; name: string }[]; events: HREvent[];
+export default function EffectsWorkspace({ role, userRoles, extraPermissions, userId, employeeId, branchId, employees, jobTitles, events, approvalSteps, approvalWorkflowAvailable }: {
+  role: Role; userRoles: string[]; extraPermissions: string[]; userId: string; employeeId: string | null; branchId: string | null;
+  employees: EffectEmployee[]; jobTitles: { id: string; name: string }[]; events: HREvent[]; approvalSteps: ApprovalStep[]; approvalWorkflowAvailable: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [activeTab, setActiveTab] = useState<"work" | "reports">("work");
+  const [workBranchFilter, setWorkBranchFilter] = useState("all");
   const [requestType, setRequestType] = useState<EventType>("leave");
   const [requestStart, setRequestStart] = useState(today);
   const [requestEnd, setRequestEnd] = useState("");
@@ -64,12 +68,27 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
   const [leaveDiscountTypes, setLeaveDiscountTypes] = useState<Record<string, "none" | "fixed" | "days" | "half_day" | "quarter_day">>({});
   const [leaveDiscountValues, setLeaveDiscountValues] = useState<Record<string, string>>({});
 
-  const isHeadOffice = role === "admin" || role === "hr";
-  const isBranchManager = role === "branch_manager";
-  const isEmployee = role === "employee";
-  const isAuditor = role === "auditor";
+  const hasRole = (...roles: string[]) => roles.some((item) => userRoles.includes(item));
+  const hasPermission = (...permissions: string[]) => permissions.some((item) => extraPermissions.includes(item));
+  const isHeadOffice = hasRole("admin", "hr");
+  const isBranchManager = hasRole("branch_manager");
+  const isEmployee = hasRole("employee");
+  const isAuditor = hasRole("auditor");
+  const canManageDeductions = isHeadOffice || isAuditor || hasPermission("effects.manage_deductions");
+  const canApproveRequests = isHeadOffice || hasPermission("effects.approve");
   const activeEmployees = employees.filter((employee) => employee.status === "active");
   const pendingCount = events.filter((event) => event.status === "pending").length;
+  const workBranches = useMemo(() => [...new Set(events.map((event) => event.employee?.branch?.name).filter((name): name is string => Boolean(name)))].sort((a, b) => a.localeCompare(b, "ar")), [events]);
+  const workEvents = useMemo(() => events
+    .filter((event) => workBranchFilter === "all" || event.employee?.branch?.name === workBranchFilter)
+    .sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending") || b.created_at.localeCompare(a.created_at)), [events, workBranchFilter]);
+
+  function currentLeaveStep(eventId: string) {
+    return approvalSteps.filter((step) => step.event_id === eventId).sort((a, b) => a.step_order - b.step_order).find((step) => step.status === "pending") ?? null;
+  }
+  function approverLabel(step: ApprovalStep) {
+    return step.approver_role === "branch_manager" ? "مدير الفرع" : step.approver_role === "auditor" ? "مراجع الحسابات" : "الموارد البشرية";
+  }
 
   async function finish(text: string) {
     setMessage({ text });
@@ -95,7 +114,7 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
     });
     if (error) return fail(error.message.includes("row-level security") ? "ما قدرتش نرسل الطلب. تأكد من ربط حسابك بملف الموظف في Supabase." : `تعذر إرسال الطلب: ${error.message}`);
     setRequestReason(""); setRequestEnd(""); setRequestTime("");
-    await finish("تم إرسال الطلب للإدارة الرئيسية للمراجعة.");
+    await finish(requestType === "leave" ? "تم إرسال طلب الإجازة إلى مدير الفرع للمرحلة الأولى من الاعتماد." : "تم إرسال الطلب للإدارة للمراجعة.");
   }
 
   async function addHire(event: FormEvent<HTMLFormElement>) {
@@ -155,36 +174,56 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
     setMessage(null);
     const reason = decisionReasons[item.id]?.trim();
     if (!reason) return fail("اكتب سبب الاعتماد أو الرفض قبل حفظ القرار.");
+    const activeLeaveStep = item.event_type === "leave" ? currentLeaveStep(item.id) : null;
+    if (item.event_type === "leave" && !approvalWorkflowAvailable) return fail("مسار اعتماد الإجازات غير مفعّل في قاعدة البيانات. طبّق تحديثات Supabase أولًا.");
+    if (item.event_type === "leave" && !activeLeaveStep) return fail("تعذر تحديد خطوة اعتماد الإجازة الحالية. حدّث الصفحة أو راجع تحديث قاعدة البيانات.");
+    const isFinalLeaveStep = activeLeaveStep?.step_order === 2;
+    if (item.event_type === "leave" && activeLeaveStep) {
+      const roleCanApprove = activeLeaveStep.approver_role === "branch_manager" ? isBranchManager : activeLeaveStep.approver_role === "auditor" ? isAuditor : isHeadOffice;
+      if (!roleCanApprove) return fail(`هذه الإجازة بانتظار اعتماد ${approverLabel(activeLeaveStep)}.`);
+    }
     let discountAmount: number | null = null;
     let discountType: "none" | "fixed" | "days" | "half_day" | "quarter_day" = "none";
     let discountDays = 0;
-    if (status === "approved" && item.event_type === "leave") {
+    if (status === "approved" && item.event_type === "leave" && isFinalLeaveStep) {
       discountType = leaveDiscountTypes[item.id] ?? "none";
       const employee = employees.find((row) => row.id === item.employee_id);
       const monthlySalary = Number(employee?.salary_amount);
       if (discountType !== "none") {
-        if (!Number.isFinite(monthlySalary) || monthlySalary <= 0) return fail("راتب الموظف غير مسجل، حدّث بيانات الراتب قبل احتساب خصم الإجازة.");
         if (discountType === "fixed") {
           discountAmount = Number(leaveDiscountValues[item.id]);
           if (!Number.isFinite(discountAmount) || discountAmount <= 0) return fail("أدخل مبلغ خصم صحيحًا أكبر من صفر.");
         } else {
+          if (!isAuditor && (!Number.isFinite(monthlySalary) || monthlySalary <= 0)) return fail("راتب الموظف غير مسجل، حدّث بيانات الراتب قبل احتساب خصم الإجازة.");
           discountDays = discountType === "days" ? Number(leaveDiscountValues[item.id]) : discountType === "half_day" ? 0.5 : 0.25;
           if (!Number.isFinite(discountDays) || discountDays <= 0) return fail("أدخل عدد أيام صحيحًا أكبر من صفر.");
-          discountAmount = Math.round((monthlySalary / 30) * discountDays * 100) / 100;
+          if (Number.isFinite(monthlySalary) && monthlySalary > 0) discountAmount = Math.round((monthlySalary / 30) * discountDays * 100) / 100;
         }
       }
     }
     setBusy(true);
-    const decisionDetails = item.event_type === "leave" && status === "approved"
-      ? { ...(item.details ?? {}), leave_discount_type: discountType, leave_discount_days: discountDays || null, monthly_salary: discountType === "none" ? null : Number(employees.find((row) => row.id === item.employee_id)?.salary_amount), daily_salary: discountType === "none" ? null : Math.round((Number(employees.find((row) => row.id === item.employee_id)?.salary_amount) / 30) * 100) / 100 }
-      : item.details;
+    if (item.event_type === "leave") {
+      const { error } = await supabase.rpc("decide_hr_event_approval", {
+        p_event_id: item.id,
+        p_status: status,
+        p_reason: reason,
+        p_discount_type: status === "approved" && isFinalLeaveStep ? discountType : "none",
+        p_discount_value: status === "approved" && isFinalLeaveStep && (discountType === "fixed" || discountType === "days") ? Number(leaveDiscountValues[item.id]) : null,
+      });
+      if (error) return fail(`تعذر حفظ اعتماد الإجازة: ${error.message}`);
+      setDecisionReasons((current) => ({ ...current, [item.id]: "" }));
+      const followingStep = approvalSteps.find((step) => step.event_id === item.id && step.step_order > (activeLeaveStep?.step_order ?? 0));
+      const nextStepText = status === "rejected" ? "تم رفض الإجازة وتسجيل السبب." : isFinalLeaveStep ? (discountAmount !== null ? `اكتمل اعتماد الإجازة واحتساب خصم ${discountAmount.toFixed(2)} د.ل.` : "اكتمل اعتماد الإجازة من مدير الفرع والجهة المختصة.") : `تم اعتماد الإجازة من مدير الفرع. أُحيلت إلى ${followingStep ? approverLabel(followingStep) : "الاعتماد النهائي"}.`;
+      await finish(nextStepText);
+      return;
+    }
     const { data, error } = await supabase.from("hr_events")
-      .update({ status, decision_reason: reason, ...(item.event_type === "leave" && status === "approved" ? { amount: discountAmount, amount_unit: discountAmount === null ? null : "LYD", details: decisionDetails } : {}) })
+      .update({ status, decision_reason: reason })
       .eq("id", item.id).eq("status", "pending").select("id").maybeSingle();
     if (error) return fail(`تعذر حفظ القرار: ${error.message}`);
     if (!data) return fail("الطلب لم يعد قيد المراجعة. حدّث الصفحة.");
     setDecisionReasons((current) => ({ ...current, [item.id]: "" }));
-    await finish(status === "approved" ? (item.event_type === "leave" && discountAmount !== null ? `تم اعتماد الإجازة واحتساب خصم ${discountAmount.toFixed(2)} د.ل.` : "تم اعتماد الطلب وتسجيل القرار.") : "تم رفض الطلب وتسجيل السبب.");
+    await finish(status === "approved" ? (item.event_type === "deduction" ? "تم اعتماد الخصم وتسجيله ضمن خصومات الرواتب." : "تم اعتماد الطلب وتسجيل القرار.") : "تم رفض الطلب وتسجيل السبب.");
   }
 
   function employeeSelect(value: string, setter: (value: string) => void) {
@@ -197,9 +236,15 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
       <article><span>سجلات الفترة</span><strong>{toWesternDigits(events.length)}</strong></article>
       <article><span>الموظفون المتاحون للإجراء</span><strong>{toWesternDigits(activeEmployees.length)}</strong></article>
     </div>
+    <div className="effects-workspace-tabs" role="tablist" aria-label="أقسام المؤثرات الأسبوعية">
+      <button type="button" role="tab" aria-selected={activeTab === "work"} className={activeTab === "work" ? "active" : ""} onClick={() => setActiveTab("work")}><span aria-hidden="true">◷</span>الشغل<span className="effects-tab-count">{toWesternDigits(pendingCount)}</span></button>
+      <button type="button" role="tab" aria-selected={activeTab === "reports"} className={activeTab === "reports" ? "active" : ""} onClick={() => setActiveTab("reports")}><span aria-hidden="true">▦</span>التقارير</button>
+    </div>
+    {activeTab === "reports" ? <EffectsReportExport events={events} /> : <>
     {message && <p className={`effects-message${message.error ? " error" : ""}`} role="status">{message.text}</p>}
+    {!approvalWorkflowAvailable && events.some((event) => event.event_type === "leave" && event.status === "pending") && <p className="effects-approval-warning" role="status">مسار اعتماد الإجازات الجديد يحتاج تطبيق تحديث قاعدة البيانات <b>20261027_leave_approval_chain.sql</b>. لا يمكن اعتماد الإجازات المعلقة قبل تطبيقه.</p>}
 
-    {isEmployee && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تقديم طلب</h2><p>الإجازة وأذونات التأخير والخروج والمأموريات تحتاج اعتماد الإدارة الرئيسية.</p></div><span className="effects-role-badge">موظف</span></div>
+    {isEmployee && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تقديم طلب</h2><p>الإجازة تمر على مدير الفرع ثم الموارد البشرية، أو مراجع الحسابات لموظفي الحسابات. بقية الأذونات تراجعها الإدارة الرئيسية.</p></div><span className="effects-role-badge">موظف</span></div>
       {!employeeId ? <p className="effects-empty-note">حسابك غير مربوط بملف موظف. اطلب من الموارد البشرية ربط الحساب أولًا.</p> : <form className="effects-form-grid" onSubmit={submitRequest}>
         <label>نوع الطلب<select value={requestType} onChange={(event) => setRequestType(event.target.value as EventType)}><option value="leave">إجازة</option><option value="late_permission">إذن تأخير</option><option value="permission">إذن خروج / استئذان</option><option value="mission">مأمورية</option></select></label>
         <label>تاريخ الطلب<input type="date" required value={requestStart} onChange={(event) => setRequestStart(event.target.value)} /></label>
@@ -220,20 +265,25 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
       </section>
     </div>}
 
-    {(isHeadOffice || isAuditor) && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تسجيل خصم على الراتب</h2><p>الخصم يُحفظ مع المبلغ والسبب والموظف كإجراء معتمد ومرحّل للراتب.</p></div><span className="effects-role-badge head-office">{isAuditor ? "مراجع حسابات" : "الإدارة الرئيسية"}</span></div>
+    {canManageDeductions && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تسجيل خصم على الراتب</h2><p>الخصم يُحفظ مع المبلغ والسبب والموظف كإجراء معتمد ومرحّل للراتب.</p></div><span className="effects-role-badge head-office">{isAuditor ? "مراجع حسابات" : isHeadOffice ? "الإدارة الرئيسية" : "صلاحية خصومات"}</span></div>
       <form className="effects-form-grid" onSubmit={recordDirectDeduction}><label className="wide">الموظف{employeeSelect(directEmployee, setDirectEmployee)}</label><label>تاريخ الخصم<input type="date" required value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} /></label><label>المبلغ بالدينار الليبي<input type="number" min="0.01" step="0.01" required value={directAmount} onChange={(event) => setDirectAmount(event.target.value)} /></label><label className="wide">سبب الخصم<textarea required rows={2} value={directReason} onChange={(event) => setDirectReason(event.target.value)} placeholder="السبب الذي سيظهر في سجل الموظف" /></label><button className="primary-button" type="submit" disabled={busy}>اعتماد وتسجيل الخصم</button></form>
     </section>}
 
-    <section className="panel effects-list-panel"><div className="effects-panel-heading"><div><h2>{isHeadOffice || isAuditor ? "طلبات وقرارات الفروع" : isBranchManager ? "سجل مؤثرات الفرع" : "طلباتي"}</h2><p>{isAuditor ? "يمكنك تسجيل الخصومات واعتماد طلبات الخصم فقط؛ بقية الطلبات للعرض والتدقيق." : isHeadOffice ? "اعتمد الإجازات وأذونات التأخير، وسجّل سبب كل قرار. اعتماد الخصم يسجله ضمن خصومات الرواتب." : "كل طلب أو إجراء يظهر بحالته وتاريخه وسببه."}</p></div>{(isHeadOffice || isAuditor) && <span className="effects-pending-badge">{toWesternDigits(pendingCount)} معلّق</span>}</div>
-      {events.length ? <div className="effects-event-list">{events.map((item) => {
+    <section className="panel effects-list-panel"><div className="effects-panel-heading"><div><h2>{isHeadOffice || isAuditor || hasPermission("effects.view_all") ? "طلبات وقرارات الفروع" : isBranchManager ? "سجل مؤثرات الفرع" : "طلباتي"}</h2><p>{isAuditor ? "سجّل الخصومات واعتمد طلبات الخصم وإجازات موظفي الحسابات بعد موافقة مدير الفرع." : isHeadOffice || hasPermission("effects.approve") ? "اعتمد طلبات الإجازة المحالة من مدير الفرع وأذونات التأخير، وسجّل سبب كل قرار." : "كل طلب أو إجراء يظهر بحالته وتاريخه وسببه."}</p></div><div className="effects-work-list-tools">{(isHeadOffice || isAuditor || hasPermission("effects.approve", "effects.manage_deductions")) && <span className="effects-pending-badge">{toWesternDigits(pendingCount)} معلّق</span>}<label className="effects-branch-filter">الفرع<select value={workBranchFilter} onChange={(event) => setWorkBranchFilter(event.target.value)}><option value="all">كل الفروع</option>{workBranches.map((name) => <option value={name} key={name}>{name}</option>)}</select></label></div></div>
+      {workEvents.length ? <div className="effects-event-list">{workEvents.map((item) => {
         const person = item.employee ? employeeName(item.employee) : "موظف";
         const time = typeof item.details?.requested_time === "string" ? item.details.requested_time : null;
-        const canDecide = (isHeadOffice || (isAuditor && item.event_type === "deduction")) && item.status === "pending";
+        const leaveSteps = approvalSteps.filter((step) => step.event_id === item.id).sort((a, b) => a.step_order - b.step_order);
+        const activeLeaveStep = item.event_type === "leave" ? leaveSteps.find((step) => step.status === "pending") : null;
+        const isFinalLeaveStep = activeLeaveStep?.step_order === 2;
+        const canDecideLeave = item.event_type === "leave" && approvalWorkflowAvailable && item.status === "pending" && activeLeaveStep !== undefined && activeLeaveStep !== null
+          && (activeLeaveStep.approver_role === "branch_manager" ? isBranchManager : activeLeaveStep.approver_role === "auditor" ? isAuditor : isHeadOffice);
+        const canDecide = item.status === "pending" && (canDecideLeave || (item.event_type !== "leave" && (canApproveRequests || (canManageDeductions && item.event_type === "deduction"))));
         const leaveDiscount = leaveDiscountTypes[item.id] ?? "none";
         const employeeSalary = Number(employees.find((row) => row.id === item.employee_id)?.salary_amount);
         const employeeRecord = employees.find((row) => row.id === item.employee_id);
         const phone = employeeRecord?.phone?.trim();
-        const canSendDeductionNotice = (isHeadOffice || isAuditor) && item.status === "approved" && item.amount != null && item.amount > 0 && (item.event_type === "deduction" || (isHeadOffice && item.event_type === "leave"));
+        const canSendDeductionNotice = canManageDeductions && item.status === "approved" && item.amount != null && item.amount > 0 && (item.event_type === "deduction" || (isHeadOffice && item.event_type === "leave"));
         const waNumber = phone ? whatsappNumber(phone) : "";
         const messageText = `السلام عليكم ${person}، نحيطكم علمًا بأنه تم تسجيل ${item.event_type === "leave" ? "خصم إجازة" : "خصم على الراتب"} بقيمة ${Number(item.amount ?? 0).toFixed(2)} د.ل. السبب: ${item.decision_reason || item.reason || "يرجى التواصل مع الموارد البشرية"}. تاريخ الإجراء: ${item.effective_date}. للاستفسار يرجى التواصل مع الموارد البشرية. شركة قرارة للرخام والجرانيت.`;
         const whatsappHref = waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(messageText)}` : "";
@@ -242,15 +292,17 @@ export default function EffectsWorkspace({ role, userId, employeeId, branchId, e
         return <article className="effects-event-card" key={item.id}>
           <div className="effects-event-top"><div><span className="effects-event-type">{eventLabels[item.event_type] ?? item.event_type}</span><h3>{person}<small> · {toWesternDigits(item.employee?.employee_number ?? "—")}</small></h3></div><span className={`effects-status ${item.status}`}>{statusLabels[item.status]}</span></div>
           <div className="effects-event-meta"><span>التاريخ: {toWesternDigits(item.effective_date)}{item.end_date ? ` – ${toWesternDigits(item.end_date)}` : ""}</span>{time && <span>الوقت: {toWesternDigits(time)}</span>}{item.amount != null && <strong>المبلغ: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</strong>}{item.employee?.branch?.name && <span>{item.employee.branch.name}</span>}</div>
+          {item.event_type === "leave" && <div className="effects-approval-flow" aria-label="مراحل اعتماد الإجازة">{leaveSteps.length ? leaveSteps.map((step) => <div key={step.id} className={`effects-approval-step ${step.status}${activeLeaveStep?.id === step.id ? " current" : ""}`}><span>{approverLabel(step)}</span><strong>{step.status === "approved" ? "تمت الموافقة" : step.status === "rejected" ? "مرفوض" : step.status === "skipped" ? "لم تعد مطلوبة" : "بانتظار الموافقة"}</strong></div>) : <div className="effects-approval-step pending"><span>مسار الموافقات</span><strong>{approvalWorkflowAvailable ? "بانتظار التهيئة" : "يتطلب تحديث قاعدة البيانات"}</strong></div>}</div>}
           {item.reason && <p className="effects-event-reason"><b>السبب:</b> {item.reason}</p>}
           {item.decision_reason && <p className="effects-decision-reason"><b>{item.status === "rejected" ? "سبب الرفض:" : "قرار الإدارة:"}</b> {item.decision_reason}</p>}
           {item.amount != null && item.event_type === "leave" && <span className="effects-payroll-note">خصم الإجازة: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</span>}
           {item.payroll_recorded_at && <span className="effects-payroll-note">تم تسجيله ضمن خصومات الراتب بتاريخ {toWesternDigits(item.payroll_recorded_at.slice(0, 10))}</span>}
           {canSendDeductionNotice && (waNumber ? <a className="whatsapp-notice-button" href={whatsappHref} target="_blank" rel="noopener noreferrer">إرسال إشعار واتساب</a> : <span className="effects-no-phone-note">لا يمكن تجهيز الرسالة: رقم هاتف الموظف غير مسجل.</span>)}
-          {canDecide && <div className="effects-decision"><label>سبب الاعتماد أو الرفض<textarea rows={2} required value={decisionReasons[item.id] ?? ""} onChange={(event) => setDecisionReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label>{item.event_type === "leave" && <div className="effects-leave-discount"><label>طريقة خصم الإجازة<select value={leaveDiscount} onChange={(event) => setLeaveDiscountTypes((current) => ({ ...current, [item.id]: event.target.value as typeof leaveDiscount }))}><option value="none">بدون خصم</option><option value="fixed">خصم مبلغ ثابت</option><option value="days">خصم بعدد الأيام</option><option value="half_day">خصم نصف يوم</option><option value="quarter_day">خصم ربع يوم</option></select></label>{leaveDiscount !== "none" && <><small>الراتب الشهري: {Number.isFinite(employeeSalary) && employeeSalary > 0 ? `${toWesternDigits(employeeSalary.toFixed(2))} د.ل` : "غير مسجل"} · أجر اليوم = الراتب ÷ 30 = {leaveDailyRate ? `${toWesternDigits(leaveDailyRate.toFixed(2))} د.ل` : "—"}</small>{(leaveDiscount === "fixed" || leaveDiscount === "days") && <label>{leaveDiscount === "fixed" ? "مبلغ الخصم بالدينار" : "عدد أيام الخصم"}<input type="number" min="0.01" step="0.01" required value={leaveDiscountValues[item.id] ?? ""} onChange={(event) => setLeaveDiscountValues((current) => ({ ...current, [item.id]: event.target.value }))} /></label>}<small>قيمة الخصم المتوقعة: {Number.isFinite(leaveDiscountPreview) && leaveDiscountPreview > 0 ? `${toWesternDigits(leaveDiscountPreview.toFixed(2))} د.ل` : "أدخل القيمة لحساب الخصم"}</small></>}</div>}<div>{item.event_type === "deduction" && <small>اعتماد الخصم يسجله ضمن خصومات الرواتب.</small>}<button type="button" className="primary-button" disabled={busy} onClick={() => decide(item, "approved")}>{item.event_type === "deduction" ? "اعتماد وتسجيل الخصم" : "اعتماد الطلب"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => decide(item, "rejected")}>رفض الطلب</button></div></div>}
+          {canDecide && <div className="effects-decision"><label>سبب الاعتماد أو الرفض<textarea rows={2} required value={decisionReasons[item.id] ?? ""} onChange={(event) => setDecisionReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label>{item.event_type === "leave" && isFinalLeaveStep && <div className="effects-leave-discount"><p>هذه آخر مرحلة اعتماد. يمكن تحديد خصم الإجازة إذا لزم.</p><label>طريقة خصم الإجازة<select value={leaveDiscount} onChange={(event) => setLeaveDiscountTypes((current) => ({ ...current, [item.id]: event.target.value as typeof leaveDiscount }))}><option value="none">بدون خصم</option><option value="fixed">خصم مبلغ ثابت</option><option value="days">خصم بعدد الأيام</option><option value="half_day">خصم نصف يوم</option><option value="quarter_day">خصم ربع يوم</option></select></label>{leaveDiscount !== "none" && <>{isAuditor && !employeeSalary ? <small>سيتم حساب الخصم من بيانات الراتب المحمية عند الاعتماد النهائي.</small> : <small>الراتب الشهري: {Number.isFinite(employeeSalary) && employeeSalary > 0 ? `${toWesternDigits(employeeSalary.toFixed(2))} د.ل` : "غير مسجل"} · أجر اليوم = الراتب ÷ 30 = {leaveDailyRate ? `${toWesternDigits(leaveDailyRate.toFixed(2))} د.ل` : "—"}</small>}{(leaveDiscount === "fixed" || leaveDiscount === "days") && <label>{leaveDiscount === "fixed" ? "مبلغ الخصم بالدينار" : "عدد أيام الخصم"}<input type="number" min="0.01" step="0.01" required value={leaveDiscountValues[item.id] ?? ""} onChange={(event) => setLeaveDiscountValues((current) => ({ ...current, [item.id]: event.target.value }))} /></label>}{(!isAuditor || employeeSalary) && <small>قيمة الخصم المتوقعة: {Number.isFinite(leaveDiscountPreview) && leaveDiscountPreview > 0 ? `${toWesternDigits(leaveDiscountPreview.toFixed(2))} د.ل` : "أدخل القيمة لحساب الخصم"}</small>}</>}</div>}<div>{item.event_type === "deduction" && <small>اعتماد الخصم يسجله ضمن خصومات الرواتب.</small>}<button type="button" className="primary-button" disabled={busy} onClick={() => decide(item, "approved")}>{item.event_type === "deduction" ? "اعتماد وتسجيل الخصم" : item.event_type === "leave" && !isFinalLeaveStep ? "موافقة مدير الفرع وإحالة" : "اعتماد الطلب"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => decide(item, "rejected")}>رفض الطلب</button></div></div>}
         </article>;
       })}</div> : <p className="effects-empty-note">ما فيش طلبات أو مؤثرات مسجلة لحد الآن.</p>}
     </section>
-    {(isHeadOffice || isAuditor) && <p className="effects-footnote">تسجيل الخصم هنا يحفظ مبلغ الخصم وسببه واعتماده في سجل الموارد البشرية؛ حساب صافي المرتب يحتاج ربطه بوحدة مسير الرواتب عند تجهيزها.</p>}
+    {canManageDeductions && <p className="effects-footnote">تسجيل الخصم هنا يحفظ مبلغ الخصم وسببه واعتماده في سجل الموارد البشرية؛ حساب صافي المرتب يحتاج ربطه بوحدة مسير الرواتب عند تجهيزها.</p>}
+    </>}
   </div>;
 }

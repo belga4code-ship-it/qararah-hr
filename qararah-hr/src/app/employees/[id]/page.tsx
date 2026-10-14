@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccessProfile } from "@/lib/supabase/profile";
+import { createAdminClient } from "@/lib/supabase/admin";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import EmployeeEditor, { type EditValues } from "./EmployeeEditor";
 import EmployeeCredentials from "./EmployeeCredentials";
@@ -13,17 +15,28 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase.from("profiles").select("id,role,full_name").eq("id", user.id).maybeSingle();
+  const { data: profile } = await loadAccessProfile<{ id: string; role: string; full_name: string | null }>(supabase, user.id, "id,role,user_roles,full_name,additional_permissions", "id,role,full_name");
   if (!profile) redirect("/setup-required");
-  if (profile.role === "employee") redirect("/");
-  const canEdit = profile.role === "admin" || profile.role === "hr";
+  const suppliedPermissions = (profile.additional_permissions as string[] | null) ?? [];
+  const roles = [...new Set([profile.role, ...((profile.user_roles as string[] | null) ?? [])])];
+  const hasRole = (...keys: string[]) => keys.some((key) => roles.includes(key));
+  if (!hasRole("admin", "hr", "branch_manager", "auditor") && !suppliedPermissions.some((permission) => permission.startsWith("employees."))) redirect("/");
+  const extraPermissions = suppliedPermissions;
+  const canEdit = hasRole("admin", "hr") || extraPermissions.includes("employees.edit");
+  const canManageAccounts = hasRole("admin", "hr") || extraPermissions.includes("employees.manage_accounts");
+  const accountReader = canManageAccounts && !hasRole("admin", "hr") ? createAdminClient() : supabase;
+  const employeeAccountQuery = canManageAccounts ? (async () => {
+    const extended = await accountReader.from("profiles").select("username,role,user_roles,additional_permissions").eq("employee_id", id).maybeSingle();
+    if (extended.data || !extended.error || !/user_roles|additional_permissions/i.test(extended.error.message)) return extended;
+    return accountReader.from("profiles").select("username,role").eq("employee_id", id).maybeSingle();
+  })() : Promise.resolve({ data: null, error: null });
 
   const [{ data: employee }, { data: branches }, { data: departments }, { data: titles }, { data: employeeAccount }] = await Promise.all([
     supabase.from("employees").select("id,employee_number,first_name,last_name,full_name,zkt_user_id,status,hired_on,branch_id,department_id,job_title_id,branch:branches(name),department:departments(name),job_title:job_titles(name)").eq("id", id).maybeSingle(),
     canEdit ? supabase.from("branches").select("id,name").order("name") : Promise.resolve({ data: [] }),
     canEdit ? supabase.from("departments").select("id,name").order("name") : Promise.resolve({ data: [] }),
     canEdit ? supabase.from("job_titles").select("id,name,department_id").order("name") : Promise.resolve({ data: [] }),
-    canEdit ? supabase.from("profiles").select("username,role").eq("employee_id", id).maybeSingle() : Promise.resolve({ data: null }),
+    employeeAccountQuery,
   ]);
   if (!employee) notFound();
   const { data: privateRow } = canEdit ? await supabase.from("employee_private").select("salary_amount,salary_updated_on,education,graduation_year,date_of_birth,religion,marital_status,blood_type,residency_expires_on,phone,emergency_phone,emergency_contact_name,passport_number,entered_libya_on,home_country,address,notes,source_data").eq("employee_id", id).maybeSingle() : { data: null };
@@ -37,5 +50,6 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
 
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "accountant" ? "محاسب" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
   const displayName = profile.full_name || user.email || "مستخدم النظام";
-  return <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="ملف الموظف"><div className="employees-page"><div className="page-content employee-detail-content"><div className="employee-detail-top"><div><p className="eyebrow">ملف الموظف</p><h1>{values.full_name}</h1><p className="welcome-copy">الكود الوظيفي: <b dir="ltr">{toWesternDigits(employee.employee_number)}</b></p></div><Link href="/employees" className="secondary-button">→　العودة إلى القائمة</Link></div><EmployeeEditor employeeId={employee.id} initialValues={values} canEdit={canEdit} branches={(branches ?? []) as {id:string;name:string}[]} departments={(departments ?? []) as {id:string;name:string}[]} jobTitles={(titles ?? []) as {id:string;name:string;department_id:string|null}[]} />{canEdit && <EmployeeCredentials employeeId={employee.id} initialUsername={employeeAccount?.username ?? ""} initialRole={employeeAccount?.role ?? "employee"} initialBranchId={employee.branch_id} branches={(branches ?? []) as {id:string;name:string}[]} canAssignAdmin={profile.role === "admin"} />}</div></div></EmployeeWorkspace>;
+  const account = employeeAccount as { username?: string | null; role?: string | null; user_roles?: string[] | null; additional_permissions?: string[] | null } | null;
+  return <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="ملف الموظف"><div className="employees-page"><div className="page-content employee-detail-content"><div className="employee-detail-top"><div><p className="eyebrow">ملف الموظف</p><h1>{values.full_name}</h1><p className="welcome-copy">الكود الوظيفي: <b dir="ltr">{toWesternDigits(employee.employee_number)}</b></p></div><Link href="/employees" className="secondary-button">→　العودة إلى القائمة</Link></div><EmployeeEditor employeeId={employee.id} initialValues={values} canEdit={canEdit} branches={(branches ?? []) as {id:string;name:string}[]} departments={(departments ?? []) as {id:string;name:string}[]} jobTitles={(titles ?? []) as {id:string;name:string;department_id:string|null}[]} />{canManageAccounts && <EmployeeCredentials employeeId={employee.id} initialUsername={account?.username ?? ""} initialRole={account?.role ?? "employee"} initialRoles={account?.user_roles ?? [account?.role ?? "employee"]} initialPermissions={account?.additional_permissions ?? []} initialBranchId={employee.branch_id} branches={(branches ?? []) as {id:string;name:string}[]} canAssignAdmin={hasRole("admin")} />}</div></div></EmployeeWorkspace>;
 }

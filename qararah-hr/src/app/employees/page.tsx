@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccessProfile } from "@/lib/supabase/profile";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import EmployeesList, { type EmployeeListRow } from "./EmployeesList";
 
@@ -10,16 +11,20 @@ export default async function EmployeesPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase.from("profiles").select("id,role,full_name").eq("id", user.id).maybeSingle();
+  const { data: profile } = await loadAccessProfile<{ id: string; role: string; full_name: string | null }>(supabase, user.id, "id,role,user_roles,full_name,additional_permissions", "id,role,full_name");
   if (!profile) redirect("/setup-required");
-  if (profile.role === "employee") redirect("/");
+  const permissions = (profile.additional_permissions as string[] | null) ?? [];
+  const roles = [...new Set([profile.role, ...((profile.user_roles as string[] | null) ?? [])])];
+  const hasRole = (...keys: string[]) => keys.some((key) => roles.includes(key));
+  const canViewAll = hasRole("admin", "hr", "branch_manager", "auditor") || permissions.includes("employees.view_all") || permissions.includes("employees.edit") || permissions.includes("employees.manage_accounts");
+  if (!canViewAll) redirect("/");
 
   const { data } = await supabase
     .from("employees")
     .select("id,employee_number,first_name,last_name,full_name,zkt_user_id,status,branch:branches(name),department:departments(name),job_title:job_titles(name)")
     .order("employee_number");
   const employees = (data ?? []) as unknown as EmployeeListRow[];
-  const canEdit = profile.role === "admin" || profile.role === "hr";
+  const canEdit = hasRole("admin", "hr") || permissions.includes("employees.edit");
 
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "accountant" ? "محاسب" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
   const displayName = profile.full_name || user.email || "مستخدم النظام";

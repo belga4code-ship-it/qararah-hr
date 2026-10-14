@@ -7,10 +7,10 @@ const internalEmail = (username: string) => `${username}@qararah.test`;
 
 export async function saveEmployeeCredentials(
   employeeId: string,
-  input: { username: string; password: string; role: string; branchId: string },
+  input: { username: string; password: string; roles: string[]; additionalPermissions: string[]; branchId: string },
 ) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(employeeId)) return { error: "معرّف الموظف غير صحيح." };
-  if (!input || typeof input.username !== "string" || typeof input.password !== "string" || typeof input.role !== "string" || typeof input.branchId !== "string") return { error: "بيانات الحساب غير مكتملة." };
+  if (!input || typeof input.username !== "string" || typeof input.password !== "string" || !Array.isArray(input.roles) || !Array.isArray(input.additionalPermissions) || typeof input.branchId !== "string") return { error: "بيانات الحساب غير مكتملة." };
   const username = input.username.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) {
     return { error: "اسم المستخدم يجب أن يكون 3 إلى 32 حرفاً إنجليزياً أو رقماً، ويمكن استخدام النقطة والشرطة." };
@@ -18,15 +18,25 @@ export async function saveEmployeeCredentials(
   if (input.password && input.password.length < 6) {
     return { error: "كلمة المرور يجب ألا تقل عن 6 أحرف." };
   }
-  if (!["employee", "accountant", "branch_manager", "hr", "admin", "auditor"].includes(input.role)) {
-    return { error: "صلاحية الحساب غير صحيحة." };
-  }
+  const allowedRoles = ["employee", "accountant", "branch_manager", "hr", "admin", "auditor", "yard_supervisor"];
+  const allowedPermissions = ["employees.view_all", "employees.view_sensitive", "employees.edit", "employees.manage_accounts", "attendance.view_all", "attendance.manage", "attendance.import", "effects.view_all", "effects.create", "effects.approve", "effects.manage_deductions", "goals.view_all", "goals.manage", "evaluations.view_all", "evaluations.evaluate", "evaluations.assign", "reports.view_all", "reports.export", "audit.view"];
+  const roles = [...new Set(input.roles)];
+  const additionalPermissions = [...new Set(input.additionalPermissions)];
+  if (!roles.length || roles.some((role) => !allowedRoles.includes(role))) return { error: "اختر صفة واحدة على الأقل من الصفات المتاحة." };
+  if (additionalPermissions.some((permission) => !allowedPermissions.includes(permission))) return { error: "تحتوي الصلاحيات على خيار غير معروف." };
+  const primaryRole = ["admin", "hr", "auditor", "branch_manager", "accountant", "employee"].find((role) => roles.includes(role)) ?? "employee";
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "انتهت الجلسة. سجّل الدخول مرة أخرى." };
-  const { data: actor } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (!actor || !["hr", "admin"].includes(actor.role)) return { error: "ليس لديك صلاحية إدارة حسابات الموظفين." };
+  let { data: actor, error: actorError } = await supabase.from("profiles").select("role,additional_permissions").eq("id", user.id).maybeSingle();
+  if (!actor && actorError && /additional_permissions/i.test(actorError.message)) {
+    const legacyActor = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    actor = legacyActor.data as typeof actor;
+    actorError = legacyActor.error;
+  }
+  const actorPermissions = (actor?.additional_permissions as string[] | null) ?? [];
+  if (!actor || (!["hr", "admin"].includes(actor.role) && !actorPermissions.includes("employees.manage_accounts"))) return { error: "ليس لديك صلاحية إدارة حسابات الموظفين." };
 
   const admin = createAdminClient();
   const [{ data: employee, error: employeeError }, { data: linkedProfile, error: profileError }] = await Promise.all([
@@ -38,8 +48,10 @@ export async function saveEmployeeCredentials(
   const { data: usernameOwner, error: usernameError } = await admin.from("profiles").select("id").ilike("username", username).maybeSingle();
   if (usernameError) return { error: "تعذر التأكد من توفر اسم المستخدم." };
   if (usernameOwner && usernameOwner.id !== linkedProfile?.id) return { error: "اسم المستخدم مستخدم مسبقاً. اختر اسماً آخر." };
-  if (["admin", "hr"].includes(input.role) && actor.role !== "admin") return { error: "صلاحية مدير النظام أو الموارد البشرية يمنحها مدير النظام فقط." };
-  const branchScoped = ["employee", "accountant", "branch_manager"].includes(input.role);
+  if (roles.some((role) => ["admin", "hr"].includes(role)) && actor.role !== "admin") return { error: "صلاحية مدير النظام أو الموارد البشرية يمنحها مدير النظام فقط." };
+  if (roles.includes("admin") && actor.role !== "admin") return { error: "صلاحية مدير النظام يمنحها مدير النظام فقط." };
+  if (additionalPermissions.includes("employees.manage_accounts") && actor.role !== "admin") return { error: "صلاحية إدارة حسابات وصلاحيات الموظفين يمنحها مدير النظام فقط." };
+  const branchScoped = roles.some((role) => ["employee", "accountant", "branch_manager", "yard_supervisor"].includes(role));
   if (branchScoped && !input.branchId) return { error: "اختر الفرع لهذا الحساب." };
   if (input.branchId) {
     const { data: branch } = await admin.from("branches").select("id").eq("id", input.branchId).maybeSingle();
@@ -77,7 +89,9 @@ export async function saveEmployeeCredentials(
     id: authUserId,
     employee_id: employee.id,
     full_name: fullName,
-    role: input.role,
+    role: primaryRole,
+    user_roles: roles,
+    additional_permissions: additionalPermissions,
     branch_id: branchScoped ? input.branchId : null,
     username,
   }, { onConflict: "id" });

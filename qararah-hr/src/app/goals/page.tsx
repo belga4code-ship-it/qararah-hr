@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccessProfile } from "@/lib/supabase/profile";
 import GoalsWorkspace, { type Goal } from "./GoalsWorkspace";
 
 export const instant = false;
@@ -11,12 +12,16 @@ export default async function GoalsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase.from("profiles").select("full_name,role,branch_id,employee_id").eq("id", user.id).maybeSingle();
+  const { data: profile } = await loadAccessProfile<{ full_name: string | null; role: string; branch_id: string | null; employee_id: string | null }>(supabase, user.id, "full_name,role,user_roles,additional_permissions,branch_id,employee_id", "full_name,role,branch_id,employee_id");
   if (!profile) redirect("/setup-required");
-  const isHR = profile.role === "admin" || profile.role === "hr";
+  const roles = [...new Set([profile.role, ...((profile.user_roles as string[] | null) ?? [])])];
+  const permissions = (profile.additional_permissions as string[] | null) ?? [];
+  const isHR = roles.some((role) => ["admin", "hr"].includes(role));
+  const canManageGoals = isHR || permissions.includes("goals.manage");
+  const canViewAllGoals = canManageGoals || permissions.includes("goals.view_all");
   const [{ data: goalData, error: goalError }, { data: employeeData }] = await Promise.all([
     supabase.from("employee_goals").select("id,employee_id,period_month,title,description,target_value,actual_value,target_unit,employee:employees(full_name,first_name,last_name,employee_number)").order("period_month", { ascending: false }),
-    isHR ? supabase.from("employees").select("id,full_name,first_name,last_name,employee_number,branch:branches(name)").eq("status", "active").order("full_name") : Promise.resolve({ data: [] }),
+    canManageGoals ? supabase.from("employees").select("id,full_name,first_name,last_name,employee_number,branch:branches(name)").eq("status", "active").order("full_name") : Promise.resolve({ data: [] }),
   ]);
   const progressAvailable = !goalError;
   const fallbackGoalData = goalError
@@ -31,7 +36,7 @@ export default async function GoalsPage() {
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
   return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="أهدافي">
     <main className="employee-app-page" dir="rtl"><section className="employee-app-welcome"><span>متابعة الأداء</span><h1>{isHR ? "أهداف الموظفين" : "أهدافي"}</h1><p>{isHR ? "حدد أهدافًا شهرية خاصة بكل موظف." : "راجع الأهداف الشهرية المحددة لك."}</p></section>
-      <GoalsWorkspace role={profile.role as "admin" | "hr" | "employee" | "branch_manager" | "accountant" | "auditor"} employeeId={profile.employee_id} userId={user.id} employees={employees} goals={goals as unknown as Goal[]} progressAvailable={progressAvailable} />
+      <GoalsWorkspace role={profile.role as "admin" | "hr" | "employee" | "branch_manager" | "accountant" | "auditor"} employeeId={profile.employee_id} userId={user.id} employees={employees} goals={goals as unknown as Goal[]} progressAvailable={progressAvailable} canViewAllGoals={canViewAllGoals} canManageGoals={canManageGoals} />
     </main>
   </EmployeeWorkspace>;
 }
