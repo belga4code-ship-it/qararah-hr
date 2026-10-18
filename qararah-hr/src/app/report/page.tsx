@@ -20,7 +20,7 @@ export default async function ReportPage() {
   if (!isHR && !isBranchManager && !roles.includes("employee")) redirect("/");
   const [{ data: reportData }, { data: employeeData }] = await Promise.all([
     supabase.from("employee_reports").select("id,employee_id,category,subject,message,status,hr_response,created_at,employee:employees(full_name,first_name,last_name,employee_number,branch:branches(name))").order("created_at", { ascending: false }),
-    isBranchManager ? supabase.from("employees").select("id,full_name,first_name,last_name,employee_number").eq("status", "active").order("full_name") : Promise.resolve({ data: [] }),
+    isBranchManager && profile.branch_id ? supabase.from("employees").select("id,full_name,first_name,last_name,employee_number").eq("branch_id", profile.branch_id).eq("status", "active").order("full_name") : Promise.resolve({ data: [] }),
   ]);
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = roles.includes("admin") ? "مدير النظام" : roles.includes("hr") ? "مدير الموارد البشرية" : isBranchManager ? "مدير الفرع" : "موظف";

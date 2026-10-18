@@ -58,8 +58,8 @@ const monthLabel = (month: string) => {
   return new Intl.DateTimeFormat("ar-LY", { month: "long", year: "numeric", timeZone: "Africa/Tripoli" }).format(new Date(Date.UTC(year, number - 1, 15)));
 };
 
-export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, month, employees, assignments, evaluators, evaluations, canAssignEvaluators, canEvaluateAll }: {
-  role: Role; userId: string; profileEmployeeId: string | null; month: string; employees: EvaluatedEmployee[]; assignments: EvaluationAssignment[]; evaluators: EvaluatorOption[]; evaluations: EvaluationRecord[]; canAssignEvaluators: boolean; canEvaluateAll: boolean;
+export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, month, employees, assignments, evaluators, evaluations, canAssignEvaluators, canEvaluateAll, isBranchManager }: {
+  role: Role; userId: string; profileEmployeeId: string | null; month: string; employees: EvaluatedEmployee[]; assignments: EvaluationAssignment[]; evaluators: EvaluatorOption[]; evaluations: EvaluationRecord[]; canAssignEvaluators: boolean; canEvaluateAll: boolean; isBranchManager: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -147,7 +147,7 @@ export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, 
         </details>}
         {isHR && employeeAssignments.length === 0 && <p className="evaluation-empty-hint">عيّن مسؤولًا واحدًا على الأقل قبل بدء تقييم هذا الموظف.</p>}
       </article>;
-    })}</div> : <p className="evaluation-empty-hint">{employees.length ? "ما لقيناش موظف يطابق البحث. جرّب الاسم أو الفرع أو الصفة." : "ما فيش موظفون مسندون للتقييم لهذا الحساب، أو لم تُسند له مسؤولية تقييم بعد."}</p>}
+    })}</div> : <p className="evaluation-empty-hint">{employees.length ? "ما لقيناش موظف يطابق البحث. جرّب الاسم أو الفرع أو الصفة." : isBranchManager ? "ما عندكش موظف مكلّف بتقييمه حاليًا. إذا الإدارة أسندت لك تقييم موظف، بيظهر هنا." : "ما فيش موظفون مسندون للتقييم لهذا الحساب، أو لم تُسند له مسؤولية تقييم بعد."}</p>}
     <p className="evaluation-footnote">تُحفظ نتيجة كل مسؤول منفصلة باسمه. المتوسط النهائي هو متوسط نسب التقييمات المقدمة؛ وإذا كان للموظف مسؤولان، يظهر تنبيه إلى حين اكتمال التقييم الثاني. معايير المحاسب ومسؤول المبيعات مأخوذة من نماذج الشركة؛ الوظائف الأخرى تستخدم معايير إدارية عامة.</p>
   </div>;
 }

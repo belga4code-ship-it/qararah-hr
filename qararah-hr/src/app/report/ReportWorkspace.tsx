@@ -24,13 +24,15 @@ export default function ReportWorkspace({ isHR, isBranchManager, branchEmployees
 
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const targetEmployeeId = isBranchManager ? reportedEmployeeId : employeeId;
-    if (!targetEmployeeId || !branchId) { setNotice(isBranchManager ? "اختر الموظف الذي ترفع البلاغ نيابةً عنه." : "حسابك يحتاج ربط بملف الموظف والفرع من الموارد البشرية."); return; }
+    if (!subject.trim()) { setNotice("اكتب عنوانًا مختصرًا للبلاغ قبل الإرسال."); return; }
+    if (!message.trim()) { setNotice("اكتب تفاصيل المشكلة أو الملاحظة قبل الإرسال."); return; }
+    const targetEmployeeId = isBranchManager ? reportedEmployeeId || employeeId : employeeId;
+    if (!targetEmployeeId || !branchId) { setNotice(isBranchManager ? "اختر موظفًا من فرعك أو اطلب ربط ملفك الوظيفي لإرسال البلاغ باسمك." : "حسابك يحتاج ربط بملف الموظف والفرع من الموارد البشرية."); return; }
     setBusy(true); setNotice("");
     const { error } = await supabase.from("employee_reports").insert({ employee_id: targetEmployeeId, branch_id: branchId, category, subject: subject.trim(), message: message.trim(), submitted_by: userId });
     setBusy(false);
     if (error) { setNotice(`تعذر إرسال الإبلاغ: ${error.message}`); return; }
-    setSubject(""); setMessage(""); setReportedEmployeeId(""); setNotice(isBranchManager ? "تم إرسال البلاغ نيابةً عن الموظف إلى الموارد البشرية." : "وصل إبلاغك للموارد البشرية."); router.refresh();
+    setSubject(""); setMessage(""); setReportedEmployeeId(""); setNotice(isBranchManager && targetEmployeeId !== employeeId ? "تم إرسال البلاغ نيابةً عن الموظف إلى الإدارة والموارد البشرية." : "وصل بلاغك إلى الإدارة والموارد البشرية."); router.refresh();
   }
 
   async function handleReport(report: EmployeeReport) {
@@ -42,8 +44,8 @@ export default function ReportWorkspace({ isHR, isBranchManager, branchEmployees
   }
 
   return <div className="employee-app-content">
-    {!isHR && <section className="panel app-form-card"><div className="app-section-heading"><h2>{isBranchManager ? "إرسال بلاغ عن موظف" : "إرسال إبلاغ"}</h2><p>{isBranchManager ? "قدّم البلاغ نيابةً عن موظف في فرعك؛ سيظهر ضمن بلاغات الفرع." : "اكتب المشكلة أو الملاحظة، وستصل للموارد البشرية لتتابعها."}</p></div><form className="app-simple-form" onSubmit={submitReport}>
-      {isBranchManager && <label>الموظف<select required value={reportedEmployeeId} onChange={(event) => setReportedEmployeeId(event.target.value)}><option value="">اختر الموظف</option>{branchEmployees.map((employee) => <option value={employee.id} key={employee.id}>{employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" ")} · {toWesternDigits(employee.employee_number)}</option>)}</select></label>}
+    {!isHR && <section className="panel app-form-card"><div className="app-section-heading"><h2>{isBranchManager ? "إرسال بلاغ للإدارة" : "إرسال إبلاغ"}</h2><p>{isBranchManager ? "أرسل بلاغًا عن مشكلة في الفرع، باسمك أو نيابةً عن موظف من فرعك. يصل البلاغ إلى الإدارة والموارد البشرية." : "اكتب المشكلة أو الملاحظة، وستصل للموارد البشرية لتتابعها."}</p></div><form className="app-simple-form" noValidate onSubmit={submitReport}>
+      {isBranchManager && <label>البلاغ يخص<select value={reportedEmployeeId} onChange={(event) => setReportedEmployeeId(event.target.value)}><option value="">{employeeId ? "بلاغ عني بصفتي مدير الفرع" : "اختر موظفًا من فرعك"}</option>{branchEmployees.map((employee) => <option value={employee.id} key={employee.id}>{employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" ")} · {toWesternDigits(employee.employee_number)}</option>)}</select></label>}
       <label>نوع الإبلاغ<select value={category} onChange={(event) => setCategory(event.target.value)}>{Object.entries(categories).map(([key, value]) => <option value={key} key={key}>{value}</option>)}</select></label>
       <label>عنوان مختصر<input required maxLength={120} value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="اكتب عنوانًا واضحًا" /></label>
       <label className="wide">التفاصيل<textarea required rows={5} maxLength={4000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="اشرح ما حدث أو اكتب ملاحظتك" /></label>

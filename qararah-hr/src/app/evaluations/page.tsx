@@ -22,6 +22,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
   const roles = [...new Set([profile.role, ...((profile.user_roles as string[] | null) ?? [])])];
   const permissions = (profile.additional_permissions as string[] | null) ?? [];
   const isAuditor = roles.includes("auditor");
+  const isBranchManager = roles.includes("branch_manager");
   const isHR = roles.some((role) => ["admin", "hr"].includes(role));
   const canAssignEvaluators = isHR || permissions.includes("evaluations.assign");
   const canEvaluateAll = isAuditor || permissions.includes("evaluations.evaluate");
@@ -30,7 +31,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
     .from("employee_evaluators")
     .select("employee_id,slot,evaluator_profile_id,evaluator_employee_id,evaluator_employee:employees!employee_evaluators_evaluator_employee_id_fkey(id,employee_number,first_name,last_name,full_name,job_title:job_titles(name),branch:branches(name))");
   const visibleAssignments = canAssignEvaluators || isAuditor || canEvaluateAll || permissions.includes("evaluations.view_all") ? assignmentData ?? [] : (assignmentData ?? []).filter((row) => row.evaluator_profile_id === user.id || (profile.employee_id && row.evaluator_employee_id === profile.employee_id));
-  if (!canViewAll && !visibleAssignments.length) redirect("/");
+  if (!canViewAll && !visibleAssignments.length && !isBranchManager) redirect("/");
   const assignedIds = [...new Set(visibleAssignments.map((row) => row.employee_id))];
 
   const employeeQuery = supabase
@@ -73,6 +74,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
         evaluations={(evaluationData ?? []) as unknown as EvaluationRecord[]}
         canAssignEvaluators={canAssignEvaluators}
         canEvaluateAll={canEvaluateAll}
+        isBranchManager={isBranchManager}
       />
     </main>
   </EmployeeWorkspace>;
