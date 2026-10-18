@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toWesternDigits } from "@/lib/digits";
 
 export type EditValues = {
-  employee_number: string; full_name: string; zkt_user_id: string; status: string; hired_on: string;
+  employee_number: string; full_name: string; zkt_user_id: string; status: string; hired_on: string; attendance_required: boolean;
   branch_name: string; department_name: string; job_title_name: string; phone: string;
   salary_amount: string; salary_updated_on: string; education: string; graduation_year: string;
   date_of_birth: string; religion: string; marital_status: string; blood_type: string;
@@ -20,7 +20,7 @@ const sourceKeys = ["الكود الوظيفى", "كود البصمة", "الا�
 const statusOptions = [["active", "نشط"], ["on_leave", "في إجازة"], ["suspended", "موقوف"], ["terminated", "منتهي الخدمة"], ["needs_review", "يحتاج مراجعة"]];
 const statusArabic: Record<string, string> = Object.fromEntries(statusOptions.map(([key, value]) => [key, value]));
 const valueLabels: Record<string, string> = { employee_number: "الكود الوظيفي", full_name: "اسم الموظف", zkt_user_id: "كود البصمة", status: "الحالة", hired_on: "تاريخ التعيين", branch_name: "الفرع", department_name: "القسم", job_title_name: "الوظيفة", phone: "رقم الجوال", salary_amount: "الراتب", salary_updated_on: "تاريخ تحديث الراتب", education: "المؤهل الدراسي", graduation_year: "سنة التخرج", date_of_birth: "تاريخ الميلاد", religion: "الديانة", marital_status: "الحالة الاجتماعية", blood_type: "فصيلة الدم", residency_expires_on: "انتهاء الإقامة", emergency_phone: "رقم الطوارئ", emergency_contact_name: "اسم جهة الطوارئ", passport_number: "رقم جواز السفر", entered_libya_on: "تاريخ دخول ليبيا", home_country: "البلد الأم", address: "العنوان", notes: "ملاحظات" };
-const groupFields: [string, string[]][] = [["البيانات الوظيفية", ["employee_number", "full_name", "zkt_user_id", "status", "hired_on", "branch_name", "department_name", "job_title_name"]], ["بيانات التواصل", ["phone", "emergency_phone", "emergency_contact_name", "address"]], ["البيانات الشخصية", ["date_of_birth", "religion", "marital_status", "blood_type", "education", "graduation_year", "home_country", "entered_libya_on", "passport_number", "residency_expires_on"]], ["بيانات الراتب والملاحظات", ["salary_amount", "salary_updated_on", "notes"]]];
+const groupFields: [string, string[]][] = [["البيانات الوظيفية", ["employee_number", "full_name", "zkt_user_id", "status", "hired_on", "branch_name", "department_name", "job_title_name"]], ["متابعة الدوام", ["attendance_required"]], ["بيانات التواصل", ["phone", "emergency_phone", "emergency_contact_name", "address"]], ["البيانات الشخصية", ["date_of_birth", "religion", "marital_status", "blood_type", "education", "graduation_year", "home_country", "entered_libya_on", "passport_number", "residency_expires_on"]], ["بيانات الراتب والملاحظات", ["salary_amount", "salary_updated_on", "notes"]]];
 
 export default function EmployeeEditor({ employeeId, initialValues, canEdit, branches, departments, jobTitles }: { employeeId: string; initialValues: EditValues; canEdit: boolean; branches: Option[]; departments: Option[]; jobTitles: TitleOption[] }) {
   const [values, setValues] = useState<EditValues>(() => ({ ...initialValues, ...Object.fromEntries(Object.entries(initialValues).filter(([key]) => key !== "source_data").map(([key, value]) => [key, typeof value === "string" ? toWesternDigits(value) : value])), source_data: Object.fromEntries(Object.entries(initialValues.source_data).map(([key, value]) => [key, typeof value === "string" ? toWesternDigits(value) : value])) } as EditValues));
@@ -55,7 +55,7 @@ export default function EmployeeEditor({ employeeId, initialValues, canEdit, bra
         jobTitleId = titleResult.data.id;
       }
 
-      const employeeResult = await supabase.from("employees").update({ employee_number: values.employee_number.trim(), first_name: values.full_name.trim(), last_name: null, full_name: values.full_name.trim(), zkt_user_id: values.zkt_user_id.trim() || null, status: values.status, hired_on: values.hired_on || null, phone: values.phone.trim() || null, branch_id: branchResult.data.id, department_id: departmentId, job_title_id: jobTitleId }).eq("id", employeeId);
+      const employeeResult = await supabase.from("employees").update({ employee_number: values.employee_number.trim(), first_name: values.full_name.trim(), last_name: null, full_name: values.full_name.trim(), zkt_user_id: values.zkt_user_id.trim() || null, status: values.status, hired_on: values.hired_on || null, attendance_required: values.attendance_required, phone: values.phone.trim() || null, branch_id: branchResult.data.id, department_id: departmentId, job_title_id: jobTitleId }).eq("id", employeeId);
       if (employeeResult.error) throw employeeResult.error;
 
       const data = { ...values.source_data };
@@ -77,6 +77,7 @@ export default function EmployeeEditor({ employeeId, initialValues, canEdit, bra
   }
 
   function field(key: string): ReactNode {
+    if (key === "attendance_required") return <label className="employee-field employee-attendance-field" key={key}><span>هل الموظف ملزم بتسجيل الحضور والانصراف؟</span><div className="employee-attendance-choice"><input type="checkbox" checked={values.attendance_required} onChange={(event) => setValues((current) => ({ ...current, attendance_required: event.target.checked }))} disabled={!canEdit} /><strong>{values.attendance_required ? "نعم، مطلوب منه البصمة" : "لا، غير ملزم بالبصمة"}</strong></div><small>عند إلغاء الخيار لن يُدرج الموظف في تقرير الحضور والانصراف.</small></label>;
     const current = String(values[key as keyof EditValues] ?? "");
     const common = { value: current, onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => set(key as keyof EditValues, event.target.value), disabled: !canEdit };
     return <label className="employee-field" key={key}><span>{valueLabels[key] ?? key}</span>{key === "status" ? <select {...common}>{statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : key === "branch_name" ? <input {...common} list="branch-options" /> : key === "department_name" ? <input {...common} list="department-options" /> : key === "job_title_name" ? <input {...common} list="title-options" /> : key === "notes" || key === "address" ? <textarea {...common} rows={key === "notes" ? 3 : 2} /> : <input {...common} type="text" dir="ltr" inputMode={["hired_on", "salary_updated_on", "date_of_birth", "residency_expires_on", "entered_libya_on", "salary_amount", "graduation_year"].includes(key) ? "decimal" : undefined} placeholder={["hired_on", "salary_updated_on", "date_of_birth", "residency_expires_on", "entered_libya_on"].includes(key) ? "YYYY-MM-DD" : undefined} />}</label>;

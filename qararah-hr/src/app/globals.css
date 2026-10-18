@@ -635,3 +635,8 @@ thead{background:#f7f3e9}th{color:#807964}td{border-color:#f0ecdf;color:#625e53}
 .access-permission-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .access-modal>footer{display:flex;justify-content:flex-end;gap:9px;padding-top:12px;border-top:1px solid #e9e2ce}
 @media(max-width:650px){.access-modal-backdrop{place-items:end center;padding:8px}.access-modal{width:100%;max-height:92dvh;padding:15px;border-radius:17px 17px 10px 10px}.access-modal>header h2{font-size:16px}.access-modal-hint{font-size:10px}.access-role-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.access-role-options label,.access-permission-list label{min-height:42px;padding:7px;font-size:10px}.access-permission-list{grid-template-columns:1fr;gap:6px}.access-modal>footer button{flex:1;justify-content:center}}
+.employee-attendance-field{align-items:flex-start;padding:14px;border:1px solid #dbe2ea;border-radius:10px;background:#f8fafc}
+.employee-attendance-field>span{font-weight:700;color:#1e293b}
+.employee-attendance-choice{display:flex;align-items:center;gap:10px;color:#334155}
+.employee-attendance-choice input{width:19px;height:19px;min-height:19px;margin:0;accent-color:#2563eb}
+.employee-attendance-field small{color:#64748b;font-size:11px;font-weight:400}

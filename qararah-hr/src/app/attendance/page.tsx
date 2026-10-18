@@ -3,10 +3,12 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccessProfile } from "@/lib/supabase/profile";
 import AttendanceRecords, { type AttendanceRecordRow } from "./AttendanceRecords";
 import AttendancePeriodFilter from "./AttendancePeriodFilter";
 import { toWesternDigits } from "@/lib/digits";
 import MonthlyTardinessExport from "./MonthlyTardinessExport";
+import AttendancePunchExport from "./AttendancePunchExport";
 
 export const instant = false;
 
@@ -15,9 +17,17 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase.from("profiles").select("full_name,role").eq("id", user.id).maybeSingle();
+  const { data: profile } = await loadAccessProfile<{ full_name: string | null; role: string; user_roles?: string[] | null; additional_permissions?: string[] | null }>(supabase, user.id, "full_name,role,user_roles,additional_permissions", "full_name,role");
   if (!profile) redirect("/setup-required");
-  if (profile.role === "employee") redirect("/");
+  const roles = [...new Set([profile.role, ...((profile.user_roles as string[] | null) ?? [])])];
+  const permissions = (profile.additional_permissions as string[] | null) ?? [];
+  const hasRole = (...values: string[]) => values.some((value) => roles.includes(value));
+  const isHR = hasRole("admin", "hr");
+  const canExportAttendanceReport = isHR || permissions.includes("reports.export");
+  const isAuditor = hasRole("auditor");
+  const canViewAttendance = isHR || isAuditor || hasRole("branch_manager", "accountant", "yard_supervisor") || permissions.some((permission) => ["attendance.view_all", "attendance.manage", "attendance.import", "reports.view_all", "reports.export"].includes(permission));
+  if (!canViewAttendance) redirect("/");
+  const canExportReports = isHR || isAuditor || permissions.includes("reports.export");
 
   const userName = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "accountant" ? "محاسب" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
@@ -41,7 +51,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   if (rangeStart > rangeEnd) [rangeStart, rangeEnd] = [rangeEnd, rangeStart];
   const periodSummary = rangeStart === rangeEnd ? rangeStart : `${rangeStart} إلى ${rangeEnd}`;
   const [{ data: records }, { data: latestImport }] = await Promise.all([
-    supabase.from("attendance_records").select("id,employee_id,attendance_date,first_in,last_out,total_work,status,exception_note,employee:employees(employee_number,zkt_user_id,full_name,first_name,last_name,status,hired_on,job_title:job_titles(name),branch:branches(name))").gte("attendance_date", rangeStart).lte("attendance_date", rangeEnd).order("attendance_date", { ascending: true }).order("first_in", { ascending: true, nullsFirst: false }),
+    supabase.from("attendance_records").select("id,employee_id,attendance_date,first_in,last_out,total_work,status,exception_note,employee:employees(employee_number,zkt_user_id,full_name,first_name,last_name,status,hired_on,attendance_required,job_title:job_titles(name),branch:branches(name))").gte("attendance_date", rangeStart).lte("attendance_date", rangeEnd).order("attendance_date", { ascending: true }).order("first_in", { ascending: true, nullsFirst: false }),
     supabase.from("attendance_imports").select("source_file,imported_at,period_start,period_end,row_count").order("imported_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const attendance = (records ?? []) as unknown as AttendanceRecordRow[];
@@ -54,7 +64,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
       <main className="attendance-page page-content" dir="rtl">
         <section className="attendance-welcome">
           <div><p className="eyebrow">متابعة الدوام</p><h1>الحضور والانصراف</h1><p className="welcome-copy">الفترة المحددة: {periodSummary} · سجلات الحضور والانصراف المستوردة.</p></div>
-          <div className="attendance-page-actions"><MonthlyTardinessExport month={selectedMonth} />{["admin", "hr", "auditor"].includes(profile.role) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{["admin", "hr"].includes(profile.role) && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
+          <div className="attendance-page-actions">{canExportAttendanceReport && <AttendancePunchExport from={rangeStart} to={rangeEnd} />}<MonthlyTardinessExport month={selectedMonth} canExport={canExportReports} />{(isHR || isAuditor || permissions.includes("reports.view_all") || permissions.includes("reports.export")) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{isHR && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
         </section>
 
         <div className="attendance-stats">
@@ -66,7 +76,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
 
           <section className="panel attendance-records-panel">
           <div className="attendance-panel-heading"><div><h2>سجل الحضور والانصراف</h2><p>اختر تاريخًا يدويًا أو شهرًا وفترة لعرض سجلاتها.</p></div><AttendancePeriodFilter month={selectedMonth} period={selectedPeriod} from={rangeStart} to={rangeEnd} /></div>
-          <AttendanceRecords rows={attendance} />
+          <AttendanceRecords rows={attendance} canExport={canExportReports} />
         </section>
       </main>
     </EmployeeWorkspace>

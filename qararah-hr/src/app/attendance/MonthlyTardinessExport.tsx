@@ -13,13 +13,14 @@ type MonthlyEmployee = {
   first_name: string | null;
   last_name: string | null;
   status: string;
+  attendance_required?: boolean;
   branch: { name: string } | null;
   job_title: { name: string } | null;
 };
 type MonthlyPunch = { employee_id: string; attendance_date: string; first_in: string | null };
 const statusLabels: Record<string, string> = { active: "نشط", on_leave: "في إجازة", suspended: "موقوف", terminated: "منتهي الخدمة", needs_review: "يحتاج مراجعة" };
 
-export default function MonthlyTardinessExport({ month }: { month: string }) {
+export default function MonthlyTardinessExport({ month, canExport }: { month: string; canExport: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -34,12 +35,12 @@ export default function MonthlyTardinessExport({ month }: { month: string }) {
       const monthEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
       const supabase = createClient();
       const [{ data: employeeData, error: employeeError }, { data: punchData, error: punchError }] = await Promise.all([
-        supabase.from("employees").select("id,employee_number,zkt_user_id,full_name,first_name,last_name,status,branch:branches(name),job_title:job_titles(name)").order("employee_number"),
+        supabase.from("employees").select("id,employee_number,zkt_user_id,full_name,first_name,last_name,status,attendance_required,branch:branches(name),job_title:job_titles(name)").order("employee_number"),
         supabase.from("attendance_records").select("employee_id,attendance_date,first_in").gte("attendance_date", monthStart).lte("attendance_date", monthEnd),
       ]);
       if (employeeError) throw employeeError;
       if (punchError) throw punchError;
-      const employees = (employeeData ?? []) as unknown as MonthlyEmployee[];
+      const employees = ((employeeData ?? []) as unknown as MonthlyEmployee[]).filter((employee) => employee.attendance_required !== false);
       const punches = (punchData ?? []) as MonthlyPunch[];
       const totals = new Map<string, [number, number, number, number]>();
       for (const employee of employees) totals.set(employee.id, [0, 0, 0, 0]);
@@ -110,5 +111,6 @@ export default function MonthlyTardinessExport({ month }: { month: string }) {
     ? new Intl.DateTimeFormat("ar-LY", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNumber - 1, 1)))
     : month;
 
+  if (!canExport) return null;
   return <div className="monthly-tardiness-action"><button type="button" className="monthly-tardiness-button" onClick={exportMonth} disabled={busy} aria-label={`تصدير تقرير التأخير لشهر ${monthLabel}`}><span className="monthly-tardiness-icon" aria-hidden="true">▦</span><span className="monthly-tardiness-button-copy"><strong>{busy ? "جارٍ تجهيز التقرير…" : "تصدير التأخير الشهري"}</strong><small>تقرير كامل · {toWesternDigits(monthLabel)}</small></span><span className="monthly-tardiness-download" aria-hidden="true">↓</span></button>{message && <span className="monthly-tardiness-message" role="status">{message}</span>}</div>;
 }

@@ -76,6 +76,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
   const isAuditor = hasRole("auditor");
   const canManageDeductions = isHeadOffice || isAuditor || hasPermission("effects.manage_deductions");
   const canApproveRequests = isHeadOffice || hasPermission("effects.approve");
+  const canExportReports = isHeadOffice || isAuditor || hasPermission("reports.export");
   const activeEmployees = employees.filter((employee) => employee.status === "active");
   const pendingCount = events.filter((event) => event.status === "pending").length;
   const workBranches = useMemo(() => [...new Set(events.map((event) => event.employee?.branch?.name).filter((name): name is string => Boolean(name)))].sort((a, b) => a.localeCompare(b, "ar")), [events]);
@@ -240,7 +241,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
       <button type="button" role="tab" aria-selected={activeTab === "work"} className={activeTab === "work" ? "active" : ""} onClick={() => setActiveTab("work")}><span aria-hidden="true">◷</span>الشغل<span className="effects-tab-count">{toWesternDigits(pendingCount)}</span></button>
       <button type="button" role="tab" aria-selected={activeTab === "reports"} className={activeTab === "reports" ? "active" : ""} onClick={() => setActiveTab("reports")}><span aria-hidden="true">▦</span>التقارير</button>
     </div>
-    {activeTab === "reports" ? <EffectsReportExport events={events} /> : <>
+    {activeTab === "reports" ? <EffectsReportExport events={events} canExport={canExportReports} /> : <>
     {message && <p className={`effects-message${message.error ? " error" : ""}`} role="status">{message.text}</p>}
     {!approvalWorkflowAvailable && events.some((event) => event.event_type === "leave" && event.status === "pending") && <p className="effects-approval-warning" role="status">مسار اعتماد الإجازات الجديد يحتاج تطبيق تحديث قاعدة البيانات <b>20261027_leave_approval_chain.sql</b>. لا يمكن اعتماد الإجازات المعلقة قبل تطبيقه.</p>}
 

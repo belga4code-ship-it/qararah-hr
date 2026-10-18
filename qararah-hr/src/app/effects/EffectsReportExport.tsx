@@ -12,7 +12,7 @@ const employeeName = (event: HREvent) => event.employee?.full_name || [event.emp
 
 type ReportRow = HREvent & { event_type: ReportType };
 
-export default function EffectsReportExport({ events }: { events: HREvent[] }) {
+export default function EffectsReportExport({ events, canExport }: { events: HREvent[]; canExport: boolean }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [type, setType] = useState<"all" | ReportType>("all");
@@ -176,7 +176,7 @@ export default function EffectsReportExport({ events }: { events: HREvent[] }) {
     </div>
     <div className="effects-report-stats"><article><span>إجمالي السجلات</span><strong>{toWesternDigits(filtered.length)}</strong></article><article><span>خصومات معتمدة</span><strong>{toWesternDigits(approvedDeductions.toFixed(2))} <small>د.ل</small></strong></article><article><span>مرحل للراتب</span><strong>{toWesternDigits(deductionsRecorded.toFixed(2))} <small>د.ل</small></strong></article></div>
     {filtered.length > 0 && <div className="effects-report-preview"><div><strong>معاينة السجلات</strong><span>الأحدث حسب تاريخ الإجراء · يعرض حتى ٥ سجلات</span></div>{filtered.slice(0, 5).map((event) => <article key={event.id}><div><strong>{toWesternDigits(employeeName(event))}</strong><span>{typeLabels[event.event_type]} · {toWesternDigits(event.effective_date)} · {toWesternDigits(event.employee?.branch?.name ?? "—")}</span></div><b className={`effects-report-status ${event.status}`}>{statusLabels[event.status]}</b>{event.amount !== null && <strong className="effects-report-amount">{toWesternDigits(Number(event.amount).toFixed(2))} د.ل</strong>}</article>)}</div>}
-    <div className="effects-report-actions"><button className="effects-report-export" type="button" onClick={exportExcel} disabled={!filtered.length || busy}><span aria-hidden="true">⇩</span>{busy ? "جارٍ إعداد Excel…" : "تصدير Excel"}</button>{message && <p role="status" className="effects-report-message">{message}</p>}</div>
+    {canExport && <div className="effects-report-actions"><button className="effects-report-export" type="button" onClick={exportExcel} disabled={!filtered.length || busy}><span aria-hidden="true">⇩</span>{busy ? "جارٍ إعداد Excel…" : "تصدير Excel"}</button>{message && <p role="status" className="effects-report-message">{message}</p>}</div>}
     {!filtered.length && <p className="effects-report-empty">لا توجد سجلات تطابق الفلاتر الحالية.</p>}
   </section>;
 }

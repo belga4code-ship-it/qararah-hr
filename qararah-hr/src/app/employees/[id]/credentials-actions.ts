@@ -29,28 +29,32 @@ export async function saveEmployeeCredentials(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "انتهت الجلسة. سجّل الدخول مرة أخرى." };
-  let { data: actor, error: actorError } = await supabase.from("profiles").select("role,additional_permissions").eq("id", user.id).maybeSingle();
-  if (!actor && actorError && /additional_permissions/i.test(actorError.message)) {
+  let { data: actor, error: actorError } = await supabase.from("profiles").select("role,user_roles,additional_permissions").eq("id", user.id).maybeSingle();
+  if (!actor && actorError && /user_roles|additional_permissions/i.test(actorError.message)) {
     const legacyActor = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
     actor = legacyActor.data as typeof actor;
     actorError = legacyActor.error;
   }
   const actorPermissions = (actor?.additional_permissions as string[] | null) ?? [];
-  if (!actor || (!["hr", "admin"].includes(actor.role) && !actorPermissions.includes("employees.manage_accounts"))) return { error: "ليس لديك صلاحية إدارة حسابات الموظفين." };
+  const actorRoles = [...new Set([actor?.role, ...((actor?.user_roles as string[] | null) ?? [])].filter(Boolean))] as string[];
+  const actorIsAdmin = actorRoles.includes("admin");
+  if (!actor || (!actorRoles.some((role) => ["hr", "admin"].includes(role)) && !actorPermissions.includes("employees.manage_accounts"))) return { error: "ليس لديك صلاحية إدارة حسابات الموظفين." };
 
   const admin = createAdminClient();
   const [{ data: employee, error: employeeError }, { data: linkedProfile, error: profileError }] = await Promise.all([
     admin.from("employees").select("id,full_name,first_name,last_name,branch_id").eq("id", employeeId).maybeSingle(),
-    admin.from("profiles").select("id,username").eq("employee_id", employeeId).maybeSingle(),
+    admin.from("profiles").select("id,username,additional_permissions").eq("employee_id", employeeId).maybeSingle(),
   ]);
   if (employeeError || !employee) return { error: "لم يتم العثور على الموظف." };
   if (profileError) return { error: "تعذر قراءة ملف الحساب. تأكد من تطبيق تحديث قاعدة البيانات." };
+  const existingPermissions = (linkedProfile?.additional_permissions as string[] | null) ?? [];
+  if (!actorIsAdmin && additionalPermissions.slice().sort().join("\0") !== existingPermissions.slice().sort().join("\0")) return { error: "صلاحيات المستخدم الإضافية يمنحها أو يغيّرها مدير النظام فقط." };
   const { data: usernameOwner, error: usernameError } = await admin.from("profiles").select("id").ilike("username", username).maybeSingle();
   if (usernameError) return { error: "تعذر التأكد من توفر اسم المستخدم." };
   if (usernameOwner && usernameOwner.id !== linkedProfile?.id) return { error: "اسم المستخدم مستخدم مسبقاً. اختر اسماً آخر." };
-  if (roles.some((role) => ["admin", "hr"].includes(role)) && actor.role !== "admin") return { error: "صلاحية مدير النظام أو الموارد البشرية يمنحها مدير النظام فقط." };
-  if (roles.includes("admin") && actor.role !== "admin") return { error: "صلاحية مدير النظام يمنحها مدير النظام فقط." };
-  if (additionalPermissions.includes("employees.manage_accounts") && actor.role !== "admin") return { error: "صلاحية إدارة حسابات وصلاحيات الموظفين يمنحها مدير النظام فقط." };
+  if (roles.some((role) => ["admin", "hr"].includes(role)) && !actorIsAdmin) return { error: "صلاحية مدير النظام أو الموارد البشرية يمنحها مدير النظام فقط." };
+  if (roles.includes("admin") && !actorIsAdmin) return { error: "صلاحية مدير النظام يمنحها مدير النظام فقط." };
+  if (additionalPermissions.includes("employees.manage_accounts") && !actorIsAdmin) return { error: "صلاحية إدارة حسابات وصلاحيات الموظفين يمنحها مدير النظام فقط." };
   const branchScoped = roles.some((role) => ["employee", "accountant", "branch_manager", "yard_supervisor"].includes(role));
   if (branchScoped && !input.branchId) return { error: "اختر الفرع لهذا الحساب." };
   if (input.branchId) {

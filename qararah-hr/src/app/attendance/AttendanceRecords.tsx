@@ -7,7 +7,7 @@ import { lateMinutesAfter915 } from "@/lib/attendance";
 export type AttendanceRecordRow = {
   id: string; employee_id: string; attendance_date: string; first_in: string | null; last_out: string | null; total_work: string | null;
   status: string; exception_note: string | null;
-  employee: { employee_number: string; zkt_user_id: string | null; full_name: string | null; first_name: string; last_name: string | null; status: string; hired_on: string | null; job_title: { name: string } | null; branch: { name: string } | null } | null;
+  employee: { employee_number: string; zkt_user_id: string | null; full_name: string | null; first_name: string; last_name: string | null; status: string; hired_on: string | null; attendance_required?: boolean; job_title: { name: string } | null; branch: { name: string } | null } | null;
 };
 
 const labels: Record<string, string> = { present: "حضور", late: "تأخر", absent: "غياب بصمة", incomplete: "بصمة ناقصة", on_mission: "مأمورية", leave: "إجازة", needs_review: "تحتاج مراجعة" };
@@ -42,7 +42,7 @@ function formatDelay(value: number) {
   return `${toWesternDigits(hours)} ساعة و${toWesternDigits(minutes)} دقيقة`;
 }
 
-export default function AttendanceRecords({ rows }: { rows: AttendanceRecordRow[] }) {
+export default function AttendanceRecords({ rows, canExport }: { rows: AttendanceRecordRow[]; canExport: boolean }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [branch, setBranch] = useState("all");
@@ -54,9 +54,10 @@ export default function AttendanceRecords({ rows }: { rows: AttendanceRecordRow[
     const text = [name, row.employee?.employee_number, row.employee?.zkt_user_id, row.employee?.job_title?.name, row.employee?.status, row.employee?.branch?.name].filter(Boolean).map(toWesternDigits).join(" ").toLocaleLowerCase("ar");
     return (!query || text.includes(query.trim().toLocaleLowerCase("ar"))) && (status === "all" || row.status === status) && (branch === "all" || row.employee?.branch?.name === branch);
   }), [rows, query, status, branch]);
+  const exportRows = useMemo(() => filtered.filter((row) => row.employee?.attendance_required !== false), [filtered]);
 
   async function exportExcel() {
-    if (!filtered.length || exporting) return;
+    if (!exportRows.length || exporting) return;
     setExporting(true);
     setExportMessage("");
     try {
@@ -70,9 +71,9 @@ export default function AttendanceRecords({ rows }: { rows: AttendanceRecordRow[
       sheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF123B5D" } };
       sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
       sheet.getRow(1).height = 31;
-      const reportDates = filtered.map((row) => row.attendance_date).sort();
+      const reportDates = exportRows.map((row) => row.attendance_date).sort();
       sheet.mergeCells("A2:O2");
-      sheet.getCell("A2").value = `الفترة: ${toWesternDigits(reportDates[0])} إلى ${toWesternDigits(reportDates.at(-1))} | عدد السجلات: ${toWesternDigits(filtered.length)}`;
+      sheet.getCell("A2").value = `الفترة: ${toWesternDigits(reportDates[0])} إلى ${toWesternDigits(reportDates.at(-1))} | عدد السجلات: ${toWesternDigits(exportRows.length)}`;
       sheet.getCell("A2").alignment = { horizontal: "center" };
       sheet.getCell("A2").font = { color: { argb: "FF475569" }, size: 10 };
       sheet.addRow([]);
@@ -80,7 +81,7 @@ export default function AttendanceRecords({ rows }: { rows: AttendanceRecordRow[
       const header = sheet.getRow(4);
       header.height = 33;
       header.eachCell((cell) => { cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF167D75" } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
-      filtered.forEach((row, index) => {
+      exportRows.forEach((row, index) => {
         const employee = row.employee;
         const name = employee?.full_name || [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || "موظف غير معروف";
         const delay = lateMinutesAfter915(row.first_in);
@@ -102,7 +103,7 @@ export default function AttendanceRecords({ rows }: { rows: AttendanceRecordRow[
       anchor.download = `سجل-الحضور-${toWesternDigits(reportDates[0])}-${toWesternDigits(reportDates.at(-1))}.xlsx`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setExportMessage(`تم تصدير ${toWesternDigits(filtered.length)} سجلًا.`);
+      setExportMessage(`تم تصدير ${toWesternDigits(exportRows.length)} سجلًا للموظفين المطلوب منهم البصمة.`);
     } catch (error) {
       setExportMessage(error instanceof Error ? `تعذر تصدير الملف: ${error.message}` : "تعذر تصدير الملف.");
     } finally {
@@ -117,7 +118,7 @@ export default function AttendanceRecords({ rows }: { rows: AttendanceRecordRow[
       <label className="attendance-filter"><span>الفرع</span><select value={branch} onChange={(event) => setBranch(event.target.value)}><option value="all">كل الفروع</option>{branches.map((name) => <option key={name}>{name}</option>)}</select></label>
       <span className="attendance-result-count">{toWesternDigits(filtered.length)} سجل</span>
     </div>
-    <button className="attendance-export-fab" type="button" onClick={exportExcel} disabled={!filtered.length || exporting} style={{ position: "fixed", zIndex: 1200, left: 24, bottom: 22, display: "flex", alignItems: "center", gap: 9, minHeight: 48, padding: "0 17px", border: 0, borderRadius: 13, background: "#0f766e", color: "#fff", boxShadow: "0 8px 24px #0f172a30", font: "inherit", fontSize: 12, fontWeight: 750, cursor: filtered.length && !exporting ? "pointer" : "not-allowed", opacity: filtered.length && !exporting ? 1 : 0.55 }}><span className="attendance-export-icon" aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 27, height: 27, border: "1px solid #ffffff50", borderRadius: 8, fontSize: 17, lineHeight: 1 }}>⇩</span><span>{exporting ? "جارٍ تجهيز Excel…" : "تصدير Excel"}</span></button>
+    {canExport && <button className="attendance-export-fab" type="button" onClick={exportExcel} disabled={!exportRows.length || exporting} style={{ position: "fixed", zIndex: 1200, left: 24, bottom: 22, display: "flex", alignItems: "center", gap: 9, minHeight: 48, padding: "0 17px", border: 0, borderRadius: 13, background: "#0f766e", color: "#fff", boxShadow: "0 8px 24px #0f172a30", font: "inherit", fontSize: 12, fontWeight: 750, cursor: exportRows.length && !exporting ? "pointer" : "not-allowed", opacity: exportRows.length && !exporting ? 1 : 0.55 }}><span className="attendance-export-icon" aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 27, height: 27, border: "1px solid #ffffff50", borderRadius: 8, fontSize: 17, lineHeight: 1 }}>⇩</span><span>{exporting ? "جارٍ تجهيز Excel…" : "تصدير Excel"}</span></button>}
     {exportMessage && <div className="attendance-export-message" role="status">{exportMessage}</div>}
     {filtered.length ? <div className="table-wrap attendance-table-wrap"><table className="attendance-record-table"><thead><tr><th>التاريخ</th><th>الموظف</th><th>الكود الوظيفي</th><th>كود البصمة</th><th>الفرع</th><th>أول دخول</th><th>آخر خروج</th><th>مدة العمل</th><th>الحالة / الملاحظة</th></tr></thead><tbody>{filtered.map((row) => {
       const employee = row.employee;
