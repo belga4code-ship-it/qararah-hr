@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toWesternDigits } from "@/lib/digits";
 import EffectsReportExport from "./EffectsReportExport";
+import EffectRequestPrintButton from "./EffectRequestPrintButton";
 
 type Role = "admin" | "hr" | "branch_manager" | "employee" | "auditor" | "accountant";
 type EventType = "new_hire" | "leave" | "termination" | "deduction" | "mission" | "late_permission" | "permission";
@@ -18,6 +19,8 @@ export type HREvent = {
   amount: number | null; amount_unit: string | null; status: "pending" | "approved" | "rejected";
   decision_reason: string | null; decision_at: string | null; payroll_recorded_at: string | null; approved_at?: string | null;
   details: Record<string, unknown> | null; created_at: string;
+  created_by?: string | null;
+  requester?: { full_name: string | null; role: string | null; user_roles?: string[] | null; employee_id: string | null } | null;
   employee: { employee_number: string; first_name: string; last_name: string | null; full_name: string | null; manager_id?: string | null; branch: { name: string } | null } | null;
 };
 export type ApprovalStep = { id: string; event_id: string; step_order: number; approver_role: "branch_manager" | "auditor" | "hr" | "assigned_manager"; approver_profile_id?: string | null; approver_profile_ids?: string[]; status: "pending" | "approved" | "rejected" | "skipped"; decided_by: string | null; decided_at: string | null; reason: string | null };
@@ -309,6 +312,23 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
         const leaveDiscount = leaveDiscountTypes[item.id] ?? "none";
         const employeeSalary = Number(employees.find((row) => row.id === item.employee_id)?.salary_amount);
         const employeeRecord = employees.find((row) => row.id === item.employee_id);
+        const requesterRoles = [item.requester?.role, ...(item.requester?.user_roles ?? [])];
+        const requesterName = item.requester?.full_name?.trim() || (item.created_by === userId ? "أنت" : null);
+        const requesterRole = item.requester?.employee_id === item.employee_id
+          ? "الموظف نفسه"
+          : requesterRoles.includes("branch_manager")
+            ? "مدير الفرع"
+            : requesterRoles.includes("admin")
+              ? "مدير النظام"
+              : requesterRoles.includes("hr")
+                ? "الموارد البشرية"
+                : requesterRoles.includes("auditor")
+                  ? "مراجع الحسابات"
+                  : requesterRoles.includes("accountant")
+                    ? "المحاسب"
+                    : requesterRoles.includes("employee")
+                      ? "الموظف"
+                      : "مستخدم النظام";
         const phone = employeeRecord?.phone?.trim();
         const canSendDeductionNotice = canManageDeductions && item.status === "approved" && item.amount != null && item.amount > 0 && (item.event_type === "deduction" || (isHeadOffice && item.event_type === "leave"));
         const waNumber = phone ? whatsappNumber(phone) : "";
@@ -319,6 +339,8 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
         return <article className="effects-event-card" key={item.id}>
           <div className="effects-event-top"><div><span className="effects-event-type">{eventLabels[item.event_type] ?? item.event_type}</span><h3>{person}<small> · {toWesternDigits(item.employee?.employee_number ?? "—")}</small></h3></div><span className={`effects-status ${item.status}`}>{statusLabels[item.status]}</span></div>
           <div className="effects-event-meta"><span>التاريخ: {toWesternDigits(item.effective_date)}{item.end_date ? ` – ${toWesternDigits(item.end_date)}` : ""}</span>{time && <span>الوقت: {toWesternDigits(time)}</span>}{item.amount != null && <strong>المبلغ: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</strong>}{item.employee?.branch?.name && <span>{item.employee.branch.name}</span>}</div>
+          {(["leave", "permission", "late_permission"] as const).includes(item.event_type as "leave" | "permission" | "late_permission") && <EffectRequestPrintButton kind={item.event_type as "leave" | "permission" | "late_permission"} employeeName={person} employeeNumber={toWesternDigits(item.employee?.employee_number ?? "—")} submittedBy={requesterName || "غير مسجل"} submitterRole={requesterName ? requesterRole : "غير محددة"} startDate={toWesternDigits(item.effective_date)} endDate={item.end_date ? toWesternDigits(item.end_date) : null} requestedTime={time ? toWesternDigits(time) : null} reason={item.reason ?? ""} />}
+          {item.event_type === "deduction" && <p className="effects-requester"><b>مقدّم طلب الخصم:</b> {requesterName ? <>{requesterName} <span>({requesterRole})</span></> : "بيانات مقدّم الطلب غير متوفرة في السجل"}</p>}
           {item.event_type === "leave" && <div className="effects-approval-flow" aria-label="مراحل اعتماد الإجازة">{leaveSteps.length ? leaveSteps.map((step) => <div key={step.id} className={`effects-approval-step ${step.status}${activeLeaveStep?.id === step.id ? " current" : ""}`}><span>{approverLabel(step)}</span><strong>{step.status === "approved" ? "تمت الموافقة" : step.status === "rejected" ? "مرفوض" : step.status === "skipped" ? "لم تعد مطلوبة" : "بانتظار الموافقة"}</strong></div>) : <div className="effects-approval-step pending"><span>مسار الموافقات</span><strong>{approvalWorkflowAvailable ? "بانتظار التهيئة" : "يتطلب تحديث قاعدة البيانات"}</strong></div>}</div>}
           {item.reason && <p className="effects-event-reason"><b>السبب:</b> {item.reason}</p>}
           {item.decision_reason && <p className="effects-decision-reason"><b>{item.status === "rejected" ? "سبب الرفض:" : "قرار الإدارة:"}</b> {item.decision_reason}</p>}

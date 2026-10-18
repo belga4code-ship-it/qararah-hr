@@ -12,7 +12,7 @@ async function loadAllHREvents(supabase: Awaited<ReturnType<typeof createClient>
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase.from("hr_events")
-      .select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,approved_at,payroll_recorded_at,details,created_at,employee:employees(employee_number,first_name,last_name,full_name,manager_id,branch:branches(name))")
+      .select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,approved_at,payroll_recorded_at,details,created_at,created_by,employee:employees(employee_number,first_name,last_name,full_name,manager_id,branch:branches(name))")
       .order("effective_date", { ascending: false }).order("created_at", { ascending: false }).order("id", { ascending: false })
       .range(from, from + pageSize - 1);
     if (error) throw error;
@@ -50,6 +50,14 @@ export default async function EffectsPage() {
     hasRole("admin", "hr") || extraPermissions.includes("employees.view_sensitive") ? supabase.from("employee_private").select("employee_id,salary_amount,phone") : Promise.resolve({ data: [] }),
     supabase.from("hr_event_approval_steps").select("id,event_id,step_order,approver_role,approver_profile_id,approver_profile_ids,status,decided_by,decided_at,reason").order("step_order"),
   ]);
+  const loadedEvents = (eventData ?? []) as unknown as HREvent[];
+  const eventIds = loadedEvents.map((event) => event.id);
+  const { data: requesterRows } = eventIds.length
+    ? await supabase.rpc("get_hr_event_requesters", { p_event_ids: eventIds })
+    : { data: [] };
+  const requesterRecords = (requesterRows ?? []) as Array<{ event_id: string; full_name: string | null; role: string | null; user_roles: string[] | null; employee_id: string | null }>;
+  const requestersByEvent = new Map(requesterRecords.map((requester) => [requester.event_id, requester] as const));
+  const eventsWithRequesters = loadedEvents.map((event) => ({ ...event, requester: requestersByEvent.get(event.id) ?? null }));
   const privateEmployees = new Map((privateData ?? []).map((row) => [row.employee_id, row]));
   const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: privateEmployees.get(employee.id)?.salary_amount ?? null, phone: privateEmployees.get(employee.id)?.phone ?? null }));
 
@@ -72,7 +80,7 @@ export default async function EffectsPage() {
           branchId={profile.branch_id}
           employees={employeesWithSalary as unknown as EffectEmployee[]}
           jobTitles={(titleData ?? []) as { id: string; name: string }[]}
-          events={(eventData ?? []) as unknown as HREvent[]}
+          events={eventsWithRequesters as unknown as HREvent[]}
           approvalSteps={(approvalResult.data ?? []) as ApprovalStep[]}
           approvalWorkflowAvailable={!approvalResult.error}
         />
