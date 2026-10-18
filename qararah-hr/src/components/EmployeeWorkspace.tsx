@@ -21,7 +21,7 @@ const navigation = [
   { label: "التقارير", href: "/attendance/report", icon: "▥", breadcrumb: "التقرير الأسبوعي" },
 ];
 
-const roleNames: Record<string, string> = { admin: "مدير النظام", hr: "الموارد البشرية", branch_manager: "مدير الفرع", accountant: "محاسب", auditor: "مراجع الحسابات", employee: "موظف", yard_supervisor: "مسؤول ساحة" };
+const roleNames: Record<string, string> = { admin: "مدير النظام", hr: "مدير الموارد البشرية", branch_manager: "مدير الفرع", accountant: "محاسب", auditor: "مراجع الحسابات", employee: "موظف", yard_supervisor: "مسؤول ساحة" };
 type AccessProfile = { role?: string; user_roles?: string[] | null; additional_permissions?: string[] | null };
 
 export default async function EmployeeWorkspace({ children, userName, email, roleLabel, breadcrumb }: { children: ReactNode; userName: string; email: string; roleLabel: string; breadcrumb: string }) {

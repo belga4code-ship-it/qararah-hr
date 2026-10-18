@@ -1,153 +1,135 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { toWesternDigits } from "@/lib/digits";
+import EvaluationDialog from "./EvaluationDialog";
+import EvaluationAssignmentDialog from "./EvaluationAssignmentDialog";
+import { employeeName, monthLabel, type Role, type EvaluatedEmployee, type EvaluationAssignment, type EvaluationRecord, type EvaluatorOption } from "./evaluation-model";
+import "./EvaluationsWorkspace.css";
 
-type Role = "admin" | "hr" | "branch_manager" | "accountant" | "employee" | "auditor";
-type Criterion = { name: string; score: number; evidence: string };
-export type EvaluatedEmployee = { id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null; status: string; branch_id: string; job_title_name: string; branch_name: string };
-export type EvaluatorOption = { employee_id: string; full_name: string; job_title_name: string; branch_name: string; has_system_account: boolean };
-export type EvaluationAssignment = { employee_id: string; slot: number; evaluator_profile_id: string; evaluator_employee_id: string | null; evaluator_employee: { id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null; job_title: { name: string } | null; branch: { name: string } | null } | null };
-export type EvaluationRecord = { id: string; employee_id: string; period_month: string; evaluator_id: string | null; total_score: number | null; max_score: number; status: string; notes: string | null; evaluation_items: { criterion: string; score: number; max_score: number; evidence: string | null }[] };
-
-const criterionNames = {
-  accountant: [
-    "الالتزام بالحضور وإدارة الوقت وإنجاز المهام",
-    "العمل الجماعي والتعاون وتحمل المسؤولية",
-    "إدارة السلف ومطابقتها مع الفرع",
-    "دقة فواتير البيع والشراء بين الفروع",
-    "متابعة مديونيات الزبائن ورفع التقرير المالي",
-    "إدخال إيصالات القبض والتحويلات ومراجعة المرفقات",
-    "إتمام المطابقة الشهرية مع الإدارة المالية في موعدها",
-    "إدارة مصروفات الفرع وإضافة مستنداتها يوميًا",
-    "إدارة حركة الخزينة اليومية وإرفاق المستندات",
-  ],
-  sales: [
-    "الالتزام بالحضور وإدارة الوقت وإنجاز المهام",
-    "تحقيق نسبة المبيعات المستهدفة خلال الشهر",
-    "استقطاب زبائن جدد بالتسويق الخارجي",
-    "تسويق المنتجات التي بها ركود",
-    "متابعة الزبائن بعد البيع وعرض المنتجات الجديدة",
-    "متابعة سداد مديونيات الزبائن",
-    "المظهر ومهارات التواصل والتسويق والإقناع",
-    "حل مشاكل الزبائن والمحافظة على استمرارية التعامل",
-    "دقة الفواتير ومدخلات المنظومة",
-    "رفع تقرير شهري باحتياجات الزبائن والسوق",
-  ],
-  general: [
-    "الالتزام بالحضور وإدارة الوقت وإنجاز المهام",
-    "جودة العمل ودقة النتائج",
-    "الالتزام بالإجراءات والتعليمات المعتمدة",
-    "إنجاز المهام في المواعيد المحددة",
-    "العمل الجماعي والتعاون مع الفريق",
-    "تحمل المسؤولية والمحافظة على ممتلكات الشركة",
-    "التواصل المهني وخدمة الزملاء والعملاء",
-    "التعامل مع المشكلات وإيجاد الحلول المناسبة",
-    "رفع التقارير وتحديث المعلومات المطلوبة",
-  ],
+type Props = {
+  role: Role;
+  userId: string;
+  profileEmployeeId: string | null;
+  month: string;
+  employees: EvaluatedEmployee[];
+  assignments: EvaluationAssignment[];
+  evaluators: EvaluatorOption[];
+  evaluations: EvaluationRecord[];
+  canAssignEvaluators: boolean;
+  canEvaluateAll: boolean;
+  isBranchManager: boolean;
 };
+type Filter = "all" | "mine_pending" | "mine_submitted" | "partial" | "complete" | "unassigned";
+const filterLabels: Record<Filter, string> = { all: "كل الموظفين", mine_pending: "بانتظار تقييمي", mine_submitted: "تم تقييمي", partial: "تقييم غير مكتمل", complete: "اكتملت التقييمات", unassigned: "بدون مقيّم" };
+const normalize = (value: string) => toWesternDigits(value).normalize("NFKD").replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").toLocaleLowerCase("ar");
+const percentage = (evaluation: EvaluationRecord) => evaluation.total_score !== null && evaluation.max_score > 0 ? evaluation.total_score / evaluation.max_score * 100 : null;
+const format = (value: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
 
-const employeeName = (employee: EvaluatedEmployee) => employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" ");
-const templateFor = (title: string) => /محاسب/.test(title) ? "accountant" : /مبيعات|مندوب/.test(title) ? "sales" : "general";
-const currentCriteria = (title: string): string[] => criterionNames[templateFor(title)];
-const seedScores = (title: string): Criterion[] => currentCriteria(title).map((name) => ({ name, score: 3, evidence: "" }));
-const monthLabel = (month: string) => {
-  const [year, number] = month.split("-").map(Number);
-  return new Intl.DateTimeFormat("ar-LY", { month: "long", year: "numeric", timeZone: "Africa/Tripoli" }).format(new Date(Date.UTC(year, number - 1, 15)));
-};
+function EvaluationIcon({ kind }: { kind: "star" | "people" | "search" }) {
+  return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {kind === "star" && <path d="m12 3 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3-5.6-3-5.6 3 1.1-6.3L3 9.6l6.3-.9L12 3Z"/>}
+    {kind === "people" && <><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 20v-2a6 6 0 0 0-4-5.6"/></>}
+    {kind === "search" && <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>}
+  </svg>;
+}
 
-export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, month, employees, assignments, evaluators, evaluations, canAssignEvaluators, canEvaluateAll, isBranchManager }: {
-  role: Role; userId: string; profileEmployeeId: string | null; month: string; employees: EvaluatedEmployee[]; assignments: EvaluationAssignment[]; evaluators: EvaluatorOption[]; evaluations: EvaluationRecord[]; canAssignEvaluators: boolean; canEvaluateAll: boolean; isBranchManager: boolean;
-}) {
+export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, month, employees, assignments, evaluators, evaluations, canAssignEvaluators, canEvaluateAll, isBranchManager }: Props) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-  const isHR = role === "admin" || role === "hr";
-  const canAssign = isHR || canAssignEvaluators;
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const canAssign = role === "admin" || role === "hr" || canAssignEvaluators;
   const [search, setSearch] = useState("");
-  const [assignmentChoices, setAssignmentChoices] = useState<Record<string, [string, string]>>(() => Object.fromEntries(employees.map((employee) => {
-    const rows = assignments.filter((item) => item.employee_id === employee.id).sort((a, b) => a.slot - b.slot);
-    return [employee.id, [rows.find((row) => row.slot === 1)?.evaluator_employee_id ?? "", rows.find((row) => row.slot === 2)?.evaluator_employee_id ?? ""]];
-  })));
-  const [scores, setScores] = useState<Record<string, Criterion[]>>(() => Object.fromEntries(employees.map((employee) => {
-    const existing = evaluations.find((row) => row.employee_id === employee.id && row.evaluator_id === userId);
-    const defaults = seedScores(employee.job_title_name);
-    if (existing?.evaluation_items?.length) {
-      const byName = new Map(existing.evaluation_items.map((item) => [item.criterion, item]));
-      return [employee.id, defaults.map((item) => ({ ...item, score: byName.get(item.name)?.score ?? item.score, evidence: byName.get(item.name)?.evidence ?? "" }))];
-    }
-    return [employee.id, defaults];
-  })));
-  const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(employees.map((employee) => [employee.id, evaluations.find((row) => row.employee_id === employee.id && row.evaluator_id === userId)?.notes ?? ""])));
-  const assignedEmployeeIds = new Set(assignments.filter((item) => item.evaluator_profile_id === userId || (profileEmployeeId && item.evaluator_employee_id === profileEmployeeId)).map((item) => item.employee_id));
-  const submittedCount = evaluations.filter((item) => item.status === "submitted").length;
-  const normalizedSearch = search.trim().toLocaleLowerCase("ar");
-  const filteredEmployees = normalizedSearch
-    ? employees.filter((employee) => [employeeName(employee), employee.branch_name, employee.job_title_name, employee.employee_number]
-      .some((value) => value?.toLocaleLowerCase("ar").includes(normalizedSearch)))
-    : employees;
-
-  async function saveAssignment(employeeId: string) {
-    const [primary, secondary] = assignmentChoices[employeeId] ?? ["", ""];
-    if (primary && primary === secondary) { setMessage({ text: "اختار مسؤولين مختلفين للتقييم الأول والثاني.", error: true }); return; }
-    setBusyId(employeeId); setMessage(null);
-    const { error } = await supabase.rpc("set_employee_evaluators", { p_employee_id: employeeId, p_primary_evaluator_employee_id: primary, p_secondary_evaluator_employee_id: secondary || null });
-    if (error) { setMessage({ text: `تعذر حفظ المقيّمين: ${error.message}`, error: true }); setBusyId(null); return; }
-    setMessage({ text: "تم حفظ المقيّمين للموظف." }); setBusyId(null); router.refresh();
+  const [branch, setBranch] = useState("all");
+  const [department, setDepartment] = useState("all");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [page, setPage] = useState(1);
+  const [evaluationEmployeeId, setEvaluationEmployeeId] = useState<string | null>(null);
+  const [assignmentEmployeeId, setAssignmentEmployeeId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const [pendingMonth, setPendingMonth] = useState(month);
+  const branches = [...new Map(employees.map(employee => [employee.branch_id, employee.branch_name || "الفرع غير محدد"])).entries()].sort((a, b) => a[1].localeCompare(b[1], "ar"));
+  const departments = [...new Map(employees.filter(employee => branch === "all" || employee.branch_id === branch).map(employee => [employee.department_id ?? "unassigned", employee.department_name || "القسم غير محدد"])).entries()].sort((a, b) => a[1].localeCompare(b[1], "ar"));
+  const rows = employees.map(employee => {
+    const employeeAssignments = assignments.filter(item => item.employee_id === employee.id).sort((a, b) => a.slot - b.slot);
+    const submitted = evaluations.filter(item => item.employee_id === employee.id && item.period_month.slice(0, 7) === month && item.status === "submitted");
+    const mine = evaluations.find(item => item.employee_id === employee.id && item.period_month.slice(0, 7) === month && item.evaluator_id === userId) ?? null;
+    const assignedToMe = employeeAssignments.some(item => item.evaluator_profile_id === userId || (!!profileEmployeeId && item.evaluator_employee_id === profileEmployeeId));
+    const canEvaluate = assignedToMe || role === "auditor" || canEvaluateAll;
+    const received = employeeAssignments.filter(assignment => !!assignment.evaluator_profile_id && submitted.some(item => item.evaluator_id === assignment.evaluator_profile_id)).length;
+    const complete = employeeAssignments.length > 0 && received === employeeAssignments.length;
+    const scored = submitted.map(percentage).filter((value): value is number => value !== null);
+    const average = scored.length ? scored.reduce((sum, value) => sum + value, 0) / scored.length : null;
+    const state = complete ? "complete" : submitted.length ? "partial" : !employeeAssignments.length ? "unassigned" : "waiting";
+    return { employee, assignments: employeeAssignments, submitted, mine, canEvaluate, received, average, state };
+  });
+  type Row = typeof rows[number];
+  function matchesFilter(row: Row, state: Filter) {
+    if (state === "mine_pending") return row.canEvaluate && row.mine?.status !== "submitted";
+    if (state === "mine_submitted") return row.mine?.status === "submitted";
+    return state === "all" || row.state === state;
   }
+  const terms = normalize(search.trim()).split(/\s+/).filter(Boolean);
+  const matching = rows.filter(({ employee }) => (branch === "all" || employee.branch_id === branch) && (department === "all" || (employee.department_id ?? "unassigned") === department) && terms.every(term => normalize([employeeName(employee), employee.employee_number, employee.branch_name, employee.department_name, employee.job_title_name].join(" ")).includes(term)));
+  const filtered = matching.filter(row => matchesFilter(row, filter)).sort((a, b) => employeeName(a.employee).localeCompare(employeeName(b.employee), "ar") || a.employee.id.localeCompare(b.employee.id));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / 10));
+  const currentPage = Math.min(page, totalPages);
+  const visible = filtered.slice((currentPage - 1) * 10, currentPage * 10);
+  const evaluationRow = rows.find(row => row.employee.id === evaluationEmployeeId && row.canEvaluate);
+  const assignmentRow = rows.find(row => row.employee.id === assignmentEmployeeId);
+  const hasFilters = !!search.trim() || branch !== "all" || department !== "all" || filter !== "all";
+  const savedCount = matching.reduce((sum, row) => sum + row.submitted.length, 0);
 
-  async function submitEvaluation(event: FormEvent<HTMLFormElement>, employee: EvaluatedEmployee) {
-    event.preventDefault(); setBusyId(employee.id); setMessage(null);
-    const items = scores[employee.id] ?? seedScores(employee.job_title_name);
-    const { error } = await supabase.rpc("submit_employee_evaluation", {
-      p_employee_id: employee.id,
-      p_period_month: `${month}-01`,
-      p_notes: notes[employee.id] ?? "",
-      p_items: items.map((item) => ({ criterion: item.name, score: item.score, max_score: 4, evidence: item.evidence })),
-    });
-    if (error) { setMessage({ text: `تعذر حفظ التقييم: ${error.message}`, error: true }); setBusyId(null); return; }
-    setMessage({ text: `تم حفظ تقييم ${employeeName(employee)} لشهر ${monthLabel(month)}.` }); setBusyId(null); router.refresh();
+  function resetFilters() { setSearch(""); setBranch("all"); setDepartment("all"); setFilter("all"); setPage(1); }
+  function changeBranch(value: string) {
+    setBranch(value); setPage(1);
+    if (department !== "all" && !employees.some(employee => (value === "all" || employee.branch_id === value) && (employee.department_id ?? "unassigned") === department)) setDepartment("all");
   }
-
   function chooseMonth(value: string) {
-    if (/^\d{4}-\d{2}$/.test(value)) router.push(`/evaluations?month=${value}`);
+    if (/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(value) && value !== month) { setPage(1); setPendingMonth(value); startTransition(() => router.push(`/evaluations?month=${value}`)); }
+  }
+  function saved(text: string) { setMessage(text); setEvaluationEmployeeId(null); setAssignmentEmployeeId(null); setPendingMonth(month); startTransition(() => router.refresh()); }
+  function evaluatorName(assignment: EvaluationAssignment) {
+    return assignment.evaluator_employee?.full_name || [assignment.evaluator_employee?.first_name, assignment.evaluator_employee?.last_name].filter(Boolean).join(" ") || evaluators.find(candidate => candidate.employee_id === assignment.evaluator_employee_id)?.full_name || `المقيّم ${assignment.slot}`;
   }
 
-  return <div className="evaluations-content">
-    <div className="evaluations-toolbar"><div><span>فترة التقييم</span><strong>{monthLabel(month)}</strong></div><label><span className="sr-only">اختر شهر التقييم</span><input type="month" value={month} onChange={(event) => chooseMonth(event.target.value)} /></label><label className="evaluations-search"><span className="sr-only">ابحث بالاسم أو الفرع أو الصفة</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو الفرع أو الصفة" /></label><span className="evaluations-counter">{toWesternDigits(submittedCount)} تقييم محفوظ</span></div>
-    {message && <p className={`evaluations-message${message.error ? " error" : ""}`} role="status">{message.text}</p>}
-    {filteredEmployees.length ? <div className="evaluations-list">{filteredEmployees.map((employee) => {
-      const employeeAssignments = assignments.filter((item) => item.employee_id === employee.id).sort((a, b) => a.slot - b.slot);
-      const employeeEvals = evaluations.filter((item) => item.employee_id === employee.id && item.status === "submitted");
-      const expected = employeeAssignments.length;
-      const average = employeeEvals.length ? employeeEvals.reduce((sum, item) => sum + (Number(item.total_score ?? 0) / Number(item.max_score || 1)) * 100, 0) / employeeEvals.length : null;
-      const pendingOther = expected > employeeEvals.length;
-      const choices = assignmentChoices[employee.id] ?? ["", ""];
-      const canEvaluate = assignedEmployeeIds.has(employee.id) || role === "auditor" || canEvaluateAll;
-      const myEvaluation = evaluations.find((item) => item.employee_id === employee.id && item.evaluator_id === userId);
-      const employeeScores = scores[employee.id] ?? seedScores(employee.job_title_name);
-      const rawTotal = employeeScores.reduce((sum, item) => sum + item.score, 0);
-      const template = templateFor(employee.job_title_name);
-      const passLine = template === "accountant" ? 26 : template === "sales" ? 29 : null;
-      return <article className="panel evaluation-employee-card" key={employee.id}>
-        <div className="evaluation-employee-heading"><div><span className="evaluation-job">{employee.job_title_name || "موظف إداري"}</span><h2>{employeeName(employee)} <small>· {toWesternDigits(employee.employee_number)}</small></h2><p>{employee.branch_name}</p></div><div className="evaluation-result"><span>المتوسط النهائي</span><strong>{average === null ? "—" : `${toWesternDigits(average.toFixed(1))}%`}</strong><small>{average === null ? "لم يُقدّم تقييم بعد" : pendingOther ? "بانتظار التقييم الآخر" : "اكتملت التقييمات"}</small></div></div>
-        {canAssign && <section className="evaluation-assignments"><div><h3>المسؤولون عن التقييم</h3><p>اختار المسؤولين من قائمة الموظفين المسجلين، ويمكن إضافة مسؤول ثانٍ.</p></div><div className="evaluation-assignment-fields">{([0, 1] as const).map((slot) => <label key={slot}><span>{slot === 0 ? "المقيّم الأول" : "المقيّم الثاني"}</span><select required={slot === 0} value={choices[slot]} onChange={(event) => setAssignmentChoices((current) => ({ ...current, [employee.id]: slot === 0 ? [event.target.value, choices[1]] : [choices[0], event.target.value] }))}><option value="">{slot === 0 ? "اختر الموظف المسؤول" : "بدون مسؤول ثانٍ"}</option>{evaluators.filter((candidate) => candidate.employee_id !== employee.id && candidate.employee_id !== choices[slot === 0 ? 1 : 0]).map((candidate) => <option key={candidate.employee_id} value={candidate.employee_id}>{candidate.full_name}{candidate.job_title_name ? ` · ${candidate.job_title_name}` : ""}{candidate.branch_name ? ` · ${candidate.branch_name}` : ""}{candidate.has_system_account ? "" : " · حساب النظام غير مربوط"}</option>)}</select></label>)}<button type="button" className="primary-button" disabled={busyId === employee.id || !choices[0]} onClick={() => saveAssignment(employee.id)}>{busyId === employee.id ? "جارٍ الحفظ…" : "حفظ الإسناد"}</button></div><p className="evaluation-assignment-note">يمكنك إسناد أي موظف بالاسم. الموظف الذي لا يملك حسابًا مربوطًا بملفه لن يتمكن من إرسال تقييمه إلا بعد ربط الحساب.</p>{employeeAssignments.length > 0 && <div className="evaluation-assigned-names">{employeeAssignments.map((item) => <span key={item.slot}>المقيّم {toWesternDigits(item.slot)}: {item.evaluator_employee?.full_name || [item.evaluator_employee?.first_name, item.evaluator_employee?.last_name].filter(Boolean).join(" ") || evaluators.find((candidate) => candidate.employee_id === item.evaluator_employee_id)?.full_name || "مقيّم بالاسم من سجل الموظفين"}</span>)}</div>}</section>}
-        {employeeAssignments.length > 0 && <div className="evaluation-score-summary">{employeeAssignments.map((assignment) => {
-          const row = employeeEvals.find((item) => item.evaluator_id === assignment.evaluator_profile_id);
-          const evaluatorEmployee = assignment.evaluator_employee;
-          const evaluatorName = evaluatorEmployee?.full_name || [evaluatorEmployee?.first_name, evaluatorEmployee?.last_name].filter(Boolean).join(" ") || evaluators.find((candidate) => candidate.employee_id === assignment.evaluator_employee_id)?.full_name || (assignment.evaluator_profile_id === userId || (profileEmployeeId && assignment.evaluator_employee_id === profileEmployeeId) ? "تقييمي" : `المقيّم ${toWesternDigits(assignment.slot)}`);
-          return <span key={assignment.slot}><b>{evaluatorName}</b>{row ? `${toWesternDigits(Number(row.total_score ?? 0))} / ${toWesternDigits(Number(row.max_score))} (${toWesternDigits(((Number(row.total_score ?? 0) / Number(row.max_score || 1)) * 100).toFixed(1))}%)` : "بانتظار التقييم"}</span>;
-        })}{average !== null && passLine !== null && <strong className={average >= (passLine / (template === "accountant" ? 36 : 40)) * 100 ? "pass" : "fail"}>{average >= (passLine / (template === "accountant" ? 36 : 40)) * 100 ? "أداء مقبول" : "أداء ضعيف"} · الحد {toWesternDigits(passLine)} نقطة</strong>}</div>}
-        {canEvaluate && <details className="evaluation-form-details" open={!myEvaluation}>
-          <summary>{myEvaluation ? "فتح أو تحديث تقييمي لهذا الشهر" : "ابدأ تقييم الموظف لهذا الشهر"}</summary>
-          <form onSubmit={(event) => submitEvaluation(event, employee)}><div className="evaluation-scale">4 ممتاز · 3 جيد · 2 متوسط · 1 ضعيف</div><div className="evaluation-criteria">{employeeScores.map((item, index) => <label className="evaluation-criterion" key={item.name}><span><b>{toWesternDigits(index + 1)}. {item.name}</b><small>النقاط من 4</small></span><select aria-label={`تقييم ${item.name}`} value={item.score} onChange={(event) => setScores((current) => ({ ...current, [employee.id]: employeeScores.map((score, scoreIndex) => scoreIndex === index ? { ...score, score: Number(event.target.value) } : score) }))}>{[4, 3, 2, 1].map((score) => <option value={score} key={score}>{score} · {score === 4 ? "ممتاز" : score === 3 ? "جيد" : score === 2 ? "متوسط" : "ضعيف"}</option>)}</select></label>)}</div><label className="evaluation-notes"><span>ملاحظات المقيّم</span><textarea rows={3} value={notes[employee.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [employee.id]: event.target.value }))} placeholder="اكتب ملاحظات أو أمثلة تدعم التقييم" /></label><div className="evaluation-submit-row"><strong>مجموع نقاطي: {toWesternDigits(rawTotal)} / {toWesternDigits(employeeScores.length * 4)}</strong>{passLine !== null && <span>حد الأداء المقبول: {toWesternDigits(passLine)} نقطة</span>}<button className="primary-button" type="submit" disabled={busyId === employee.id}>{busyId === employee.id ? "جارٍ الحفظ…" : myEvaluation ? "تحديث التقييم" : "إرسال التقييم"}</button></div></form>
-        </details>}
-        {isHR && employeeAssignments.length === 0 && <p className="evaluation-empty-hint">عيّن مسؤولًا واحدًا على الأقل قبل بدء تقييم هذا الموظف.</p>}
-      </article>;
-    })}</div> : <p className="evaluation-empty-hint">{employees.length ? "ما لقيناش موظف يطابق البحث. جرّب الاسم أو الفرع أو الصفة." : isBranchManager ? "ما عندكش موظف مكلّف بتقييمه حاليًا. إذا الإدارة أسندت لك تقييم موظف، بيظهر هنا." : "ما فيش موظفون مسندون للتقييم لهذا الحساب، أو لم تُسند له مسؤولية تقييم بعد."}</p>}
-    <p className="evaluation-footnote">تُحفظ نتيجة كل مسؤول منفصلة باسمه. المتوسط النهائي هو متوسط نسب التقييمات المقدمة؛ وإذا كان للموظف مسؤولان، يظهر تنبيه إلى حين اكتمال التقييم الثاني. معايير المحاسب ومسؤول المبيعات مأخوذة من نماذج الشركة؛ الوظائف الأخرى تستخدم معايير إدارية عامة.</p>
-  </div>;
+  return <section className="evaluation-board" dir="rtl">
+    <header className="evaluation-board-hero"><div><span>الموارد البشرية / متابعة الأداء</span><h1>التقييمات الشهرية</h1><p>اختر الموظف وافتح نافذة التقييم، ثم سجّل إجاباتك وملاحظاتك.</p></div><div className="evaluation-period"><EvaluationIcon kind="star"/><div><small>فترة التقييم</small><strong>{monthLabel(month)}</strong></div></div></header>
+    <div className="evaluation-board-body">
+      <div className="evaluation-board-metrics">
+        <article><span>الموظفون المعروضون</span><strong>{matching.length}<small>موظف</small></strong><p>ضمن نطاق صلاحياتك والفلاتر المحددة</p></article>
+        <article className="waiting"><span>بانتظار تقييمي</span><strong>{matching.filter(row => matchesFilter(row, "mine_pending")).length}<small>موظف</small></strong><p>موظفون متاحون لك ولم ترسل تقييمهم</p></article>
+        <article className="submitted"><span>التقييمات المقدمة</span><strong>{savedCount}<small>تقييم</small></strong><p>نتيجة مستقلة لكل مسؤول في هذا الشهر</p></article>
+        <article><span>اكتملت التقييمات</span><strong>{matching.filter(row => row.state === "complete").length}<small>موظف</small></strong><p>قدّم جميع المقيّمين المسندين تقييمهم</p></article>
+      </div>
+      {message && <p className="evaluation-board-notice" role="status">{message}<button type="button" aria-label="إغلاق رسالة التقييم" onClick={() => setMessage("")}>×</button></p>}
+      <div className="evaluation-filter-heading"><div><h2>البحث عن الموظفين</h2><p>اختر الشهر والفرع والقسم للوصول إلى الموظف المطلوب.</p></div>{hasFilters && <button type="button" onClick={resetFilters}>مسح الفلاتر ×</button>}</div>
+      <div className="evaluation-board-filters">
+        <label className="evaluation-board-search"><span>اسم الموظف أو الرقم الوظيفي</span><div><EvaluationIcon kind="search"/><input type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="ابحث بالاسم أو الرقم أو الصفة…"/></div></label>
+        <label><span>شهر التقييم {isPending && <small className="evaluation-loading-hint" role="status">جارٍ تحديث البيانات…</small>}</span><input type="month" disabled={isPending} value={isPending ? pendingMonth : month} onChange={event => chooseMonth(event.target.value)}/></label>
+        <label><span>الفرع</span><select value={branch} onChange={event => changeBranch(event.target.value)}><option value="all">كل الفروع</option>{branches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+        <label><span>القسم</span><select value={department} onChange={event => { setDepartment(event.target.value); setPage(1); }}><option value="all">كل الأقسام</option>{departments.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+      </div>
+      <div className="evaluation-board-tabs" aria-label="تصفية حالة التقييم">{(Object.keys(filterLabels) as Filter[]).map(key => <button type="button" key={key} aria-pressed={filter === key} onClick={() => { setFilter(key); setPage(1); }}>{filterLabels[key]}<span>{matching.filter(row => matchesFilter(row, key)).length}</span></button>)}</div>
+      <div className="evaluation-register-heading"><div><h2>سجل تقييم الموظفين <span>{filtered.length}</span></h2><p>{monthLabel(month)} · يُحسب المتوسط من نسب التقييمات المقدمة.</p></div><span className="evaluation-register-hint">كل مسؤول يقيّم بشكل مستقل</span></div>
+      <div className="evaluation-register-wrap"><table className="evaluation-register"><thead><tr><th>الموظف</th><th>المسؤولون عن التقييم</th><th>نتيجة الشهر</th><th>حالة التقييم</th><th>الإجراءات</th></tr></thead><tbody>{visible.map(row => {
+        const { employee, mine, average, state } = row;
+        return <tr key={employee.id}>
+          <td data-label="الموظف"><div className="evaluation-register-person"><span aria-hidden="true">{employeeName(employee).charAt(0)}</span><div><strong>{employeeName(employee)}</strong><small>{employee.job_title_name || "موظف إداري"}</small><bdi>{employee.employee_number}</bdi><p>{[employee.branch_name, employee.department_name].filter(Boolean).join(" · ")}</p></div></div></td>
+          <td data-label="المسؤولون عن التقييم">{row.assignments.length ? <div className="evaluation-register-evaluators">{row.assignments.map(assignment => {
+            const result = assignment.evaluator_profile_id ? row.submitted.find(item => item.evaluator_id === assignment.evaluator_profile_id) : null;
+            const resultPercentage = result ? percentage(result) : null;
+            return <div key={assignment.slot}><i>{assignment.slot}</i><span>{evaluatorName(assignment)}<small className={result ? "done" : ""}>{resultPercentage === null ? "بانتظار التقييم" : `${format(resultPercentage)}% · تم التقييم`}</small></span></div>;
+          })}{row.submitted.length > row.received && <small className="evaluation-extra-count">{row.submitted.length - row.received} تقييم إضافي مقدم</small>}</div> : <span className="evaluation-no-assignment">لم يحدد مقيّم بعد</span>}</td>
+          <td data-label="نتيجة الشهر"><strong className={`evaluation-average ${state === "complete" ? "complete" : ""}`} dir="ltr">{average === null ? "—" : `${format(average)}%`}</strong><small className="evaluation-average-label">{average === null ? "لم يُقدّم تقييم بعد" : state === "complete" ? "المتوسط النهائي" : "المتوسط الحالي"}</small>{average !== null && <div className="evaluation-average-track" role="progressbar" aria-label={`متوسط تقييم ${employeeName(employee)}`} aria-valuenow={Math.min(100, average)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${Math.min(100, Math.max(0, average))}%` }}/></div>}</td>
+          <td data-label="حالة التقييم"><span className={`evaluation-register-state ${state}`}><i/>{state === "complete" ? "مكتمل" : state === "partial" ? "تقييم مقدم" : state === "unassigned" ? "بانتظار الإسناد" : "بانتظار التقييم"}</span>{row.assignments.length > 0 && <small className="evaluation-assigned-progress">{row.received} من {row.assignments.length} مقيّم</small>}{mine?.status === "submitted" && <span className="evaluation-mine-submitted">✓ أرسلت تقييمك</span>}</td>
+          <td data-label="الإجراءات"><div className="evaluation-register-actions">{row.canEvaluate ? <button type="button" disabled={isPending} className="evaluation-open-button" aria-label={`تقييم الموظف: ${employeeName(employee)}`} onClick={() => setEvaluationEmployeeId(employee.id)}><EvaluationIcon kind="star"/>{mine?.status === "submitted" ? "تحديث تقييمي" : "تقييم"}</button> : <span className="evaluation-readonly-hint">غير مسند إليك</span>}{canAssign && <button type="button" disabled={isPending} className="evaluation-assign-button" aria-label={`إسناد مقيّمي الموظف: ${employeeName(employee)}`} onClick={() => setAssignmentEmployeeId(employee.id)}><EvaluationIcon kind="people"/>{row.assignments.length ? "المقيّمون" : "إسناد المقيّمين"}</button>}</div></td>
+        </tr>;
+      })}</tbody></table>{!filtered.length && <div className="evaluation-register-empty"><span aria-hidden="true">☆</span><h3>{employees.length ? "لا يوجد موظفون يطابقون الفلاتر" : "لا يوجد موظفون مسندون للتقييم"}</h3><p>{employees.length ? "جرّب تغيير الفرع أو القسم أو حالة التقييم." : isBranchManager ? "سيظهر الموظفون هنا بعد إسناد مسؤولية تقييمهم إليك." : "تظهر هنا قائمة الموظفين المتاحين لحسابك حسب الصلاحيات والإسناد."}</p>{hasFilters && <button type="button" onClick={resetFilters}>عرض كل الموظفين</button>}</div>}</div>
+      <footer className="evaluation-register-footer"><span>{filtered.length ? `${(currentPage - 1) * 10 + 1}–${Math.min(currentPage * 10, filtered.length)} من ${filtered.length} موظف` : "0 موظف"}</span><nav aria-label="صفحات سجل التقييم"><button type="button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>السابق</button><span>{currentPage} / {totalPages}</span><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>التالي</button></nav></footer>
+      <p className="evaluation-board-footnote">تُحفظ إجابات كل مسؤول باسمه. يظهر المتوسط الحالي إلى حين تقديم جميع المقيّمين المسندين لتقييماتهم.</p>
+    </div>
+    {evaluationRow && <EvaluationDialog key={`${evaluationRow.employee.id}:${month}`} employee={evaluationRow.employee} month={month} userId={userId} existing={evaluationRow.mine} onClose={() => setEvaluationEmployeeId(null)} onSaved={saved}/>}
+    {canAssign && assignmentRow && <EvaluationAssignmentDialog key={assignmentRow.employee.id} employee={assignmentRow.employee} assignments={assignmentRow.assignments} evaluators={evaluators} onClose={() => setAssignmentEmployeeId(null)} onSaved={saved}/>}
+  </section>;
 }

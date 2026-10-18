@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:approvals": "node scripts/test-individual-approvals.mjs",
+    "test:goals": "node scripts/test-goal-corrections.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -18,6 +20,7 @@
     "read-excel-file": "^9.3.12"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

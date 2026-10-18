@@ -3,7 +3,8 @@ import { connection } from "next/server";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import { createClient } from "@/lib/supabase/server";
 import { loadAccessProfile } from "@/lib/supabase/profile";
-import EvaluationsWorkspace, { type EvaluationAssignment, type EvaluationRecord, type EvaluatorOption, type EvaluatedEmployee } from "./EvaluationsWorkspace";
+import EvaluationsWorkspace from "./EvaluationsWorkspace";
+import { type EvaluationAssignment, type EvaluationRecord, type EvaluatorOption, type EvaluatedEmployee } from "./evaluation-model";
 
 export const instant = false;
 
@@ -12,7 +13,7 @@ const currentMonth = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/
 export default async function EvaluationsPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   await connection();
   const { month: requestedMonth } = await searchParams;
-  const month = requestedMonth && /^\d{4}-\d{2}$/.test(requestedMonth) ? requestedMonth : currentMonth();
+  const month = requestedMonth && /^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : currentMonth();
   const monthStart = `${month}-01`;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -30,39 +31,40 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
   const { data: assignmentData } = await supabase
     .from("employee_evaluators")
     .select("employee_id,slot,evaluator_profile_id,evaluator_employee_id,evaluator_employee:employees!employee_evaluators_evaluator_employee_id_fkey(id,employee_number,first_name,last_name,full_name,job_title:job_titles(name),branch:branches(name))");
-  const visibleAssignments = canAssignEvaluators || isAuditor || canEvaluateAll || permissions.includes("evaluations.view_all") ? assignmentData ?? [] : (assignmentData ?? []).filter((row) => row.evaluator_profile_id === user.id || (profile.employee_id && row.evaluator_employee_id === profile.employee_id));
+  const assignedIds = [...new Set((assignmentData ?? []).filter((row) => row.evaluator_profile_id === user.id || (profile.employee_id && row.evaluator_employee_id === profile.employee_id)).map((row) => row.employee_id))];
+  const visibleAssignments = canViewAll ? assignmentData ?? [] : (assignmentData ?? []).filter((row) => assignedIds.includes(row.employee_id));
   if (!canViewAll && !visibleAssignments.length && !isBranchManager) redirect("/");
-  const assignedIds = [...new Set(visibleAssignments.map((row) => row.employee_id))];
 
   const employeeQuery = supabase
     .from("employees")
-    .select("id,employee_number,first_name,last_name,full_name,status,branch_id,job_title:job_titles(name),branch:branches(name)")
+    .select("id,employee_number,first_name,last_name,full_name,status,branch_id,department_id,job_title:job_titles(name),branch:branches(name),department:departments(name)")
     .order("employee_number");
-  const [{ data: employeeData }, { data: evaluationData }, { data: evaluatorProfiles }] = await Promise.all([
+  const [{ data: employeeData }, { data: evaluationData }, { data: evaluatorProfiles, error: evaluatorProfilesError }] = await Promise.all([
     canViewAll ? employeeQuery : assignedIds.length ? employeeQuery.in("id", assignedIds) : Promise.resolve({ data: [] }),
     supabase.from("evaluations").select("id,employee_id,period_month,evaluator_id,total_score,max_score,status,notes,evaluation_items(criterion,score,max_score,evidence)").eq("period_month", monthStart),
-    canAssignEvaluators ? supabase.from("profiles").select("employee_id") : Promise.resolve({ data: [] }),
+    canAssignEvaluators ? supabase.from("profiles").select("employee_id") : Promise.resolve({ data: [], error: null }),
   ]);
 
   const employees = (employeeData ?? []).map((row) => {
     const job = row.job_title as unknown as { name: string } | null;
     const branch = row.branch as unknown as { name: string } | null;
-    return { id: row.id, employee_number: row.employee_number, first_name: row.first_name, last_name: row.last_name, full_name: row.full_name, status: row.status, branch_id: row.branch_id, job_title_name: job?.name ?? "", branch_name: branch?.name ?? "" };
+    const department = row.department as unknown as { name: string } | null;
+    return { id: row.id, employee_number: row.employee_number, first_name: row.first_name, last_name: row.last_name, full_name: row.full_name, status: row.status, branch_id: row.branch_id, department_id: row.department_id, department_name: department?.name ?? "", job_title_name: job?.name ?? "", branch_name: branch?.name ?? "" };
   }) as EvaluatedEmployee[];
   const linkedEmployeeIds = new Set((evaluatorProfiles ?? []).map((candidate) => candidate.employee_id).filter(Boolean));
+  const hasFullProfileRoster = ["admin", "hr"].includes(profile.role) && !evaluatorProfilesError;
   const evaluators = employees.filter((employee) => employee.status === "active").map((employee) => ({
     employee_id: employee.id,
     full_name: employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" "),
     job_title_name: employee.job_title_name,
     branch_name: employee.branch_name,
-    has_system_account: linkedEmployeeIds.has(employee.id),
+    has_system_account: linkedEmployeeIds.has(employee.id) ? true : hasFullProfileRoster ? false : null,
   }));
 
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف مقيّم";
   return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="تقييم الأداء">
-    <main className="evaluations-page page-content" dir="rtl">
-      <section className="evaluations-welcome"><div><p className="eyebrow">تقييم أداء الكادر الإداري</p><h1>التقييمات الشهرية</h1><p className="welcome-copy">كل مسؤول يقيّم بشكل مستقل، وتظهر النتيجة النهائية كمتوسط التقييمات المقدمة.</p></div></section>
+    <main className="evaluations-page page-content evaluations-redesigned-page" dir="rtl">
       <EvaluationsWorkspace
         role={profile.role as "admin" | "hr" | "branch_manager" | "accountant" | "employee" | "auditor"}
         userId={user.id}

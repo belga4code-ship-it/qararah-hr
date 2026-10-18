@@ -1,8 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toWesternDigits } from "@/lib/digits";
-import type { HREvent } from "./EffectsWorkspace";
+import type { HREvent, ApprovalStep } from "./EffectsWorkspace";
+import EffectReportEditor from "./EffectReportEditor";
+import EffectRequestPrintButton from "./EffectRequestPrintButton";
+import { leaveCalendarDays } from "./request-print-details";
+import "./EffectsReport.css";
 
 const reportTypes = ["leave", "late_permission", "permission", "mission", "deduction"] as const;
 type ReportType = typeof reportTypes[number];
@@ -12,7 +16,17 @@ const employeeName = (event: HREvent) => event.employee?.full_name || [event.emp
 
 type ReportRow = HREvent & { event_type: ReportType };
 
-export default function EffectsReportExport({ events, canExport }: { events: HREvent[]; canExport: boolean }) {
+const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const date = (value: string | null | undefined) => value ? toWesternDigits(value.slice(0,10).split("-").reverse().join("/")) : "—";
+const timestamp = (value: string | null | undefined) => value ? toWesternDigits(new Intl.DateTimeFormat("ar-LY", { timeZone: "Africa/Tripoli", dateStyle: "short", timeStyle: "short" }).format(new Date(value))) : "—";
+const normalized = (value: string) => toWesternDigits(value).normalize("NFKD").replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g,"ا").replace(/ى/g,"ي").toLocaleLowerCase("ar");
+
+export default function EffectsReportExport({ events, canExport, canEdit, approvalSteps, approvalNames }: { events: HREvent[]; canExport: boolean; canEdit: boolean; approvalSteps: ApprovalStep[]; approvalNames: Record<string,string> }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sort, setSort] = useState("newest");
+  const [selected, setSelected] = useState<string | null>(null);
+  const detailDialog = useRef<HTMLDialogElement>(null);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [type, setType] = useState<"all" | ReportType>("all");
@@ -25,21 +39,32 @@ export default function EffectsReportExport({ events, canExport }: { events: HRE
   const source = useMemo(() => events.filter((event): event is ReportRow => reportTypes.includes(event.event_type as ReportType)), [events]);
   const branches = useMemo(() => [...new Set(source.map((event) => event.employee?.branch?.name).filter((name): name is string => Boolean(name)))].sort((a, b) => a.localeCompare(b, "ar")), [source]);
   const filtered = useMemo(() => {
-    const query = employee.trim().toLocaleLowerCase("ar");
+    const query = normalized(employee.trim());
     return source.filter((event) => {
-      const person = employeeName(event).toLocaleLowerCase("ar");
+      const person = normalized(employeeName(event));
       const number = event.employee?.employee_number ?? "";
       return (!from || event.effective_date >= from)
         && (!to || event.effective_date <= to)
         && (type === "all" || event.event_type === type)
         && (status === "all" || event.status === status)
         && (branch === "all" || event.employee?.branch?.name === branch)
-        && (!query || person.includes(query) || number.toLocaleLowerCase("ar").includes(query));
-    }).sort((a, b) => b.effective_date.localeCompare(a.effective_date) || b.created_at.localeCompare(a.created_at));
-  }, [source, from, to, type, status, branch, employee]);
+        && (!query || person.includes(query) || normalized(number).includes(query));
+    }).sort((a, b) => sort === "oldest" ? a.effective_date.localeCompare(b.effective_date) || a.created_at.localeCompare(b.created_at) : sort === "amount" ? Number(b.amount ?? 0) - Number(a.amount ?? 0) || b.effective_date.localeCompare(a.effective_date) : b.effective_date.localeCompare(a.effective_date) || b.created_at.localeCompare(a.created_at));
+  }, [source, from, to, type, status, branch, employee, sort]);
 
-  const deductionsRecorded = filtered.filter((event) => event.payroll_recorded_at && event.amount != null).reduce((sum, event) => sum + Number(event.amount ?? 0), 0);
+  const deductionsRecorded = filtered.filter((event) => event.status === "approved" && event.payroll_recorded_at && event.amount != null).reduce((sum, event) => sum + Number(event.amount ?? 0), 0);
   const approvedDeductions = filtered.filter((event) => event.status === "approved" && event.event_type === "deduction").reduce((sum, event) => sum + Number(event.amount ?? 0), 0);
+
+  const leaveDeductions = filtered.filter((event) => event.status === "approved" && event.event_type === "leave").reduce((sum,event)=>sum+Number(event.amount ?? 0),0);
+  const totalApproved = approvedDeductions + leaveDeductions;
+  const pending = filtered.filter(event=>event.status === "pending").length;
+  const totalPages = Math.max(1,Math.ceil(filtered.length/pageSize));
+  const currentPage = Math.min(page,totalPages);
+  const visibleRows = filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+  const selectedEvent = source.find(event=>event.id === selected);
+  const filtersActive = Boolean(from || to || type !== "all" || status !== "all" || branch !== "all" || employee);
+  function resetFilters(){setFrom("");setTo("");setType("all");setStatus("all");setBranch("all");setEmployee("");setSort("newest");setPage(1);}
+  function openDetails(id: string){setSelected(id);detailDialog.current?.showModal();}
 
   async function exportExcel() {
     if (!filtered.length || busy) return;
@@ -119,9 +144,10 @@ export default function EffectsReportExport({ events, canExport }: { events: HRE
         if (event.event_type === "deduction") {
           entry.deductions += 1;
           if (event.status === "pending") entry.pending += Number(event.amount ?? 0);
-          if (event.status === "approved") entry.approved += Number(event.amount ?? 0);
+
         }
-        if (event.payroll_recorded_at) entry.payroll += Number(event.amount ?? 0);
+        if (event.status === "approved" && (event.event_type === "deduction" || event.event_type === "leave")) entry.approved += Number(event.amount ?? 0);
+        if (event.status === "approved" && event.payroll_recorded_at) entry.payroll += Number(event.amount ?? 0);
         byEmployee.set(id, entry);
       }
       const summary = workbook.addWorksheet("ملخص الموظفين", { views: [{ rightToLeft: true, state: "frozen", ySplit: 4 }] });
@@ -132,7 +158,7 @@ export default function EffectsReportExport({ events, canExport }: { events: HRE
       summary.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
       summary.getRow(1).height = 30;
       summary.mergeCells("A2:J2");
-      summary.getCell("A2").value = `عدد السجلات: ${filtered.length} · خصومات معتمدة: ${approvedDeductions.toFixed(2)} د.ل · مرحّلة للراتب: ${deductionsRecorded.toFixed(2)} د.ل`;
+      summary.getCell("A2").value = `عدد السجلات: ${filtered.length} · خصومات معتمدة: ${totalApproved.toFixed(2)} د.ل · مرحّلة للراتب: ${deductionsRecorded.toFixed(2)} د.ل`;
       summary.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
       summary.addRow([]);
       summary.addRow(["الكود الوظيفي", "اسم الموظف", "الفرع", "الإجازات", "أذونات التأخير والخروج", "طلبات الخصم", "خصومات معلّقة", "خصومات معتمدة", "خصومات مرحّلة للراتب", "العملة"]);
@@ -164,19 +190,43 @@ export default function EffectsReportExport({ events, canExport }: { events: HRE
     }
   }
 
-  return <section className="panel effects-report-panel">
-    <div className="effects-panel-heading"><div><span className="effects-report-eyebrow">تصدير ومتابعة</span><h2>تقرير الإذونات والخصومات</h2><p>يشمل الإجازات وأذونات التأخير والخروج والخصومات ضمن السجلات التي تسمح صلاحيتك بعرضها.</p></div><span className="effects-report-count">{toWesternDigits(filtered.length)} سجل</span></div>
-    <div className="effects-report-filters">
-      <label>من تاريخ<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} /></label>
-      <label>إلى تاريخ<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} /></label>
-      <label>نوع السجل<select value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="all">كل الإذونات والخصومات</option>{reportTypes.map((item) => <option key={item} value={item}>{typeLabels[item]}</option>)}</select></label>
-      <label>الحالة<select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="all">كل الحالات</option><option value="pending">قيد المراجعة</option><option value="approved">معتمد</option><option value="rejected">مرفوض</option></select></label>
-      <label>الفرع<select value={branch} onChange={(event) => setBranch(event.target.value)}><option value="all">كل الفروع</option>{branches.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
-      <label className="effects-report-employee-filter">بحث الموظف<input type="search" value={employee} onChange={(event) => setEmployee(event.target.value)} placeholder="الاسم أو الرقم الوظيفي" /></label>
+  return <section className="panel effects-report-panel effects-report-v2" dir="rtl">
+    <header className="report-hero"><div><span className="report-eyebrow">الموارد البشرية / التقارير</span><h2>سجل الإذونات والخصومات</h2><p>تفاصيل واضحة لكل إجراء، ومتابعة موافقات الموظفين وأثرها المالي.</p></div><div className="report-hero-actions">{canExport && <button className="report-export-button" type="button" onClick={exportExcel} disabled={!filtered.length || busy}><span aria-hidden="true">⇩</span>{busy ? "جارٍ تجهيز الملف…" : "تصدير Excel"}</button>}<span className="report-access-note">{canEdit ? "التعديل متاح لك كمدير للنظام" : "عرض السجلات حسب صلاحيتك"}</span></div></header>
+    <div className="report-body">
+      <div className="report-metrics">
+        <article><span>السجلات المعروضة</span><strong>{filtered.length}<small>سجل</small></strong><p>{new Set(filtered.map(event=>event.employee_id)).size} موظف ضمن النتائج</p></article>
+        <article className="financial"><span>إجمالي الخصومات المعتمدة</span><strong dir="ltr">{money(totalApproved)} <small>د.ل</small></strong><p>مباشرة {money(approvedDeductions)} + إجازات {money(leaveDeductions)}</p></article>
+        <article><span>مسجّل ضمن خصومات الراتب</span><strong dir="ltr">{money(deductionsRecorded)} <small>د.ل</small></strong><p>السجلات المعتمدة التي لها تاريخ ترحيل</p></article>
+        <article className="waiting"><span>بانتظار المراجعة</span><strong>{pending}<small>طلب</small></strong><p>من إجمالي النتائج المصفّاة</p></article>
+      </div>
+      <div className="report-filter-heading"><div><h3>تصفية السجلات</h3><p>اختر الفترة أو الموظف للوصول إلى السجل المطلوب.</p></div>{filtersActive && <button type="button" className="report-reset" onClick={resetFilters}>مسح الفلاتر ×</button>}</div>
+      <div className="report-filter-grid">
+        <label className="report-search"><span>بحث عن موظف</span><input type="search" value={employee} onChange={e=>{setEmployee(e.target.value);setPage(1);}} placeholder="اسم الموظف أو الكود الوظيفي…"/></label>
+        <label><span>من تاريخ</span><input type="date" value={from} max={to || undefined} onChange={e=>{setFrom(e.target.value);setPage(1);}}/></label>
+        <label><span>إلى تاريخ</span><input type="date" value={to} min={from || undefined} onChange={e=>{setTo(e.target.value);setPage(1);}}/></label>
+        <label><span>الفرع</span><select value={branch} onChange={e=>{setBranch(e.target.value);setPage(1);}}><option value="all">كل الفروع</option>{branches.map(name=><option key={name} value={name}>{name}</option>)}</select></label>
+        <label><span>الحالة</span><select value={status} onChange={e=>{setStatus(e.target.value as typeof status);setPage(1);}}><option value="all">كل الحالات</option><option value="pending">قيد المراجعة</option><option value="approved">معتمد</option><option value="rejected">مرفوض</option></select></label>
+      </div>
+      <div className="report-category-tabs" aria-label="نوع السجل"><button type="button" aria-pressed={type === "all"} onClick={()=>{setType("all");setPage(1);}}>كل السجلات</button>{reportTypes.map(key=><button type="button" key={key} aria-pressed={type === key} onClick={()=>{setType(key);setPage(1);}}>{typeLabels[key]}</button>)}</div>
+      <div className="report-table-heading"><div><h3>السجلات <span>{filtered.length}</span></h3><p>كل صف يمثل طلبًا أو إجراءً مستقلًا.</p></div><label>الترتيب<select value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}}><option value="newest">الأحدث أولًا</option><option value="oldest">الأقدم أولًا</option><option value="amount">الأعلى مبلغًا</option></select></label></div>
+      {message && <p className="report-export-message" role="status">{message}</p>}
+      <div className="report-table-scroll"><table className="report-ledger"><thead><tr><th>الموظف</th><th>نوع السجل</th><th>الفترة / التاريخ</th><th>الفرع</th><th>الحالة</th><th>قيمة الخصم</th><th>الراتب</th><th>الإجراءات</th></tr></thead><tbody>{visibleRows.map(event=>{
+        const days = event.event_type === "leave" ? leaveCalendarDays(event.effective_date,event.end_date) : null;
+        return <tr key={event.id}><td><div className="report-person"><span className="report-person-avatar" aria-hidden="true">{employeeName(event).trim().charAt(0)}</span><div><strong>{employeeName(event)}</strong><small dir="ltr">{event.employee?.employee_number ?? "—"}</small></div></div></td>
+        <td><span className={`report-type type-${event.event_type}`}>{typeLabels[event.event_type]}</span>{(event.report_revision ?? 0)>0 && <small className="report-corrected">تم تعديله · {event.report_revision}</small>}</td>
+        <td className="report-date"><span dir="ltr">{date(event.effective_date)}</span>{event.end_date && <small>حتى <b dir="ltr">{date(event.end_date)}</b>{days !== null ? ` · ${days} أيام` : ""}</small>}</td><td>{event.employee?.branch?.name ?? "—"}</td>
+        <td><span className={`report-status ${event.status}`}><i/>{statusLabels[event.status]}</span></td>
+        <td><span className={`report-money ${Number(event.amount)>0 ? "has-amount" : ""}`} dir="ltr">{event.amount !== null ? <>{money(Number(event.amount))} <small>د.ل</small></> : "—"}</span>{Number(event.amount)>0 && event.status !== "approved" && <small className="report-money-note">{event.status === "pending" ? "غير معتمد" : "طلب مرفوض"}</small>}</td>
+        <td>{event.status === "approved" && event.payroll_recorded_at ? <span className="report-payroll recorded">مسجّل</span> : <span className="report-payroll">—</span>}</td>
+        <td><div className="report-row-actions"><button type="button" className="report-action" onClick={()=>openDetails(event.id)}>التفاصيل</button>{canEdit && <EffectReportEditor key={event.id} event={event}/>}</div></td></tr>;
+      })}</tbody></table>{!filtered.length && <div className="report-empty"><span aria-hidden="true">⌕</span><h3>لا توجد سجلات مطابقة</h3><p>جرّب اسمًا آخر أو وسّع الفترة المحددة.</p><button type="button" className="secondary-button" onClick={resetFilters}>عرض كل السجلات</button></div>}</div>
+      <footer className="report-table-footer"><div><span>{filtered.length ? `${(currentPage-1)*pageSize+1}–${Math.min(currentPage*pageSize,filtered.length)} من ${filtered.length} سجل` : "0 سجل"}</span><label>في الصفحة<select value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1);}}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select></label></div><nav aria-label="صفحات التقرير"><button type="button" disabled={currentPage<=1} onClick={()=>setPage(currentPage-1)}>السابق</button><span>{currentPage} / {totalPages}</span><button type="button" disabled={currentPage>=totalPages} onClick={()=>setPage(currentPage+1)}>التالي</button></nav></footer>
+      <p className="report-bottom-note">الإجماليات والتصدير تشمل جميع النتائج المطابقة للفلاتر، بما فيها السجلات في الصفحات الأخرى.</p>
     </div>
-    <div className="effects-report-stats"><article><span>إجمالي السجلات</span><strong>{toWesternDigits(filtered.length)}</strong></article><article><span>خصومات معتمدة</span><strong>{toWesternDigits(approvedDeductions.toFixed(2))} <small>د.ل</small></strong></article><article><span>مرحل للراتب</span><strong>{toWesternDigits(deductionsRecorded.toFixed(2))} <small>د.ل</small></strong></article></div>
-    {filtered.length > 0 && <div className="effects-report-preview"><div><strong>معاينة السجلات</strong><span>الأحدث حسب تاريخ الإجراء · يعرض حتى ٥ سجلات</span></div>{filtered.slice(0, 5).map((event) => <article key={event.id}><div><strong>{toWesternDigits(employeeName(event))}</strong><span>{typeLabels[event.event_type]} · {toWesternDigits(event.effective_date)} · {toWesternDigits(event.employee?.branch?.name ?? "—")}</span></div><b className={`effects-report-status ${event.status}`}>{statusLabels[event.status]}</b>{event.amount !== null && <strong className="effects-report-amount">{toWesternDigits(Number(event.amount).toFixed(2))} د.ل</strong>}</article>)}</div>}
-    {canExport && <div className="effects-report-actions"><button className="effects-report-export" type="button" onClick={exportExcel} disabled={!filtered.length || busy}><span aria-hidden="true">⇩</span>{busy ? "جارٍ إعداد Excel…" : "تصدير Excel"}</button>{message && <p role="status" className="effects-report-message">{message}</p>}</div>}
-    {!filtered.length && <p className="effects-report-empty">لا توجد سجلات تطابق الفلاتر الحالية.</p>}
+    <dialog ref={detailDialog} className="report-record-dialog" aria-label="تفاصيل سجل التقرير"><div className="report-record-detail" dir="rtl"><header><div><span>تفاصيل السجل</span><h2>{selectedEvent ? employeeName(selectedEvent) : "السجل"}</h2><p>{selectedEvent?.employee?.employee_number}</p></div><button type="button" className="report-dialog-close" aria-label="إغلاق تفاصيل السجل" onClick={()=>detailDialog.current?.close()}>×</button></header>
+    {selectedEvent && <><dl className="report-detail-grid"><div><dt>نوع الإجراء</dt><dd>{typeLabels[selectedEvent.event_type]}</dd></div><div><dt>الحالة</dt><dd><span className={`report-status ${selectedEvent.status}`}>{statusLabels[selectedEvent.status]}</span></dd></div><div><dt>التاريخ</dt><dd>{date(selectedEvent.effective_date)}{selectedEvent.end_date && ` إلى ${date(selectedEvent.end_date)}`}</dd></div><div><dt>الفرع</dt><dd>{selectedEvent.employee?.branch?.name ?? "—"}</dd></div><div><dt>قيمة الخصم</dt><dd>{selectedEvent.amount == null ? "بدون خصم مسجل" : `${money(Number(selectedEvent.amount))} د.ل`}</dd></div><div><dt>الترحيل للراتب</dt><dd>{date(selectedEvent.payroll_recorded_at)}</dd></div><div className="wide"><dt>سبب الطلب / الإجراء</dt><dd>{selectedEvent.reason || "—"}</dd></div><div className="wide"><dt>القرار المسجل</dt><dd>{selectedEvent.decision_reason || "لم يسجل قرار بعد"}</dd></div><div><dt>مقدم الطلب</dt><dd>{selectedEvent.requester?.full_name || "غير مسجل"}</dd></div><div><dt>تاريخ القرار</dt><dd>{date(selectedEvent.decision_at)}</dd></div></dl>
+    {(selectedEvent.report_revision ?? 0)>0 && <div className="report-edit-history"><strong>آخر تعديل · الإصدار {selectedEvent.report_revision}</strong><p>{approvalNames[selectedEvent.report_edited_by ?? ""] || "مدير النظام"} · {timestamp(selectedEvent.report_edited_at)}</p><p>{selectedEvent.report_edit_reason}</p><small>القيم قبل التعديل وبعده متاحة في سجل التدقيق.</small></div>}
+    <footer>{["leave","permission","late_permission"].includes(selectedEvent.event_type) && <EffectRequestPrintButton kind={selectedEvent.event_type as "leave"|"permission"|"late_permission"} employeeName={employeeName(selectedEvent)} employeeNumber={selectedEvent.employee?.employee_number ?? "—"} submittedBy={selectedEvent.requester?.full_name || "غير مسجل"} submitterRole={selectedEvent.requester?.employee_id === selectedEvent.employee_id ? "الموظف نفسه" : "مقدم الطلب"} startDate={selectedEvent.effective_date} endDate={selectedEvent.end_date} requestedTime={typeof selectedEvent.details?.requested_time === "string" ? selectedEvent.details.requested_time : null} reason={selectedEvent.reason || ""} requestId={selectedEvent.id} requestStatus={selectedEvent.status} responsibleIds={Array.isArray(selectedEvent.details?.responsible_profile_ids) ? selectedEvent.details.responsible_profile_ids.filter((id):id is string=>typeof id === "string") : []} approvalSteps={approvalSteps.filter(step=>step.event_id === selectedEvent.id)} approvalNames={approvalNames} decisionBy={selectedEvent.decision_by || selectedEvent.approved_by || null} decisionAt={selectedEvent.decision_at || selectedEvent.approved_at || null} decisionReason={selectedEvent.decision_reason} adminOverride={Boolean(selectedEvent.details?.admin_override)} deductionAmount={selectedEvent.amount} deductionUnit={selectedEvent.amount_unit}/>}<button type="button" className="secondary-button" onClick={()=>detailDialog.current?.close()}>إغلاق</button></footer></>}
+    </div></dialog>
   </section>;
 }

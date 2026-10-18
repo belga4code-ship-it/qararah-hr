@@ -20,23 +20,24 @@ export default async function GoalsPage() {
   const canManageGoals = isHR || permissions.includes("goals.manage");
   const canViewAllGoals = canManageGoals || permissions.includes("goals.view_all");
   const [{ data: goalData, error: goalError }, { data: employeeData }] = await Promise.all([
-    supabase.from("employee_goals").select("id,employee_id,period_month,title,description,target_value,actual_value,target_unit,employee:employees(full_name,first_name,last_name,employee_number)").order("period_month", { ascending: false }),
-    canManageGoals ? supabase.from("employees").select("id,full_name,first_name,last_name,employee_number,branch:branches(name)").eq("status", "active").order("full_name") : Promise.resolve({ data: [] }),
+    supabase.from("employee_goals").select("id,employee_id,period_month,title,description,target_value,actual_value,target_unit,goal_revision,employee:employees(full_name,first_name,last_name,employee_number,branch:branches(name))").is("deleted_at", null).order("period_month", { ascending: false }),
+    canManageGoals ? supabase.from("employees").select("id,full_name,first_name,last_name,employee_number,branch_id,department_id,branch:branches(name),department:departments(name)").eq("status", "active").order("full_name") : Promise.resolve({ data: [] }),
   ]);
   const progressAvailable = !goalError;
   const fallbackGoalData = goalError
-    ? await supabase.from("employee_goals").select("id,employee_id,period_month,title,description,target_value,target_unit,employee:employees(full_name,first_name,last_name,employee_number)").order("period_month", { ascending: false })
+    ? await supabase.from("employee_goals").select("id,employee_id,period_month,title,description,target_value,target_unit,goal_revision,employee:employees(full_name,first_name,last_name,employee_number,branch:branches(name))").is("deleted_at", null).order("period_month", { ascending: false })
     : null;
   const goals = goalData ?? (fallbackGoalData?.data ?? []).map((goal) => ({ ...goal, actual_value: null }));
   const employees = (employeeData ?? []).map((employee) => {
     const branch = employee.branch as unknown as { name: string } | null;
-    return { id: employee.id, full_name: employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" "), employee_number: employee.employee_number, branch_name: branch?.name ?? "" };
+    const department = employee.department as unknown as { name: string } | null;
+    return { id: employee.id, full_name: employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" "), employee_number: employee.employee_number, branch_id: employee.branch_id, branch_name: branch?.name ?? "", department_id: employee.department_id, department_name: department?.name ?? "" };
   });
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
   return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="أهدافي">
-    <main className="employee-app-page" dir="rtl"><section className="employee-app-welcome"><span>متابعة الأداء</span><h1>{isHR ? "أهداف الموظفين" : "أهدافي"}</h1><p>{isHR ? "حدد أهدافًا شهرية خاصة بكل موظف." : "راجع الأهداف الشهرية المحددة لك."}</p></section>
-      <GoalsWorkspace role={profile.role as "admin" | "hr" | "employee" | "branch_manager" | "accountant" | "auditor"} employeeId={profile.employee_id} userId={user.id} employees={employees} goals={goals as unknown as Goal[]} progressAvailable={progressAvailable} canViewAllGoals={canViewAllGoals} canManageGoals={canManageGoals} />
+    <main className="employee-app-page goals-page" dir="rtl">
+      <GoalsWorkspace role={profile.role as "admin" | "hr" | "employee" | "branch_manager" | "accountant" | "auditor"} employeeId={profile.employee_id} userId={user.id} employees={employees} goals={goals as unknown as Goal[]} progressAvailable={progressAvailable} canViewAllGoals={canViewAllGoals} canManageGoals={canManageGoals} canEditGoals={isHR} />
     </main>
   </EmployeeWorkspace>;
 }

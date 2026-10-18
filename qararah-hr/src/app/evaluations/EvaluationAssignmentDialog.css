@@ -1,0 +1,102 @@
+.evaluation-assignment-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(740px, calc(100vw - 28px));
+  max-height: 92dvh;
+  margin: auto;
+  padding: 0;
+  border: 1px solid #d9e4ef;
+  border-radius: 18px;
+  overflow: hidden;
+  color: #23415f;
+  background: #fff;
+  box-shadow: 0 24px 90px #102a4c4d;
+}
+.evaluation-assignment-dialog::backdrop { background: #10233e99; backdrop-filter: blur(4px); }
+.evaluation-assignment-dialog *, .evaluation-assignment-dialog *::before, .evaluation-assignment-dialog *::after { box-sizing: border-box; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-form { display: flex; flex-direction: column; max-height: 92dvh; margin: 0; padding: 0; }
+.evaluation-assignment-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; flex: none; gap: 20px; padding: 23px 27px 20px; border-bottom: 1px solid #e3ebf4; background: #f7fafd; }
+.evaluation-assignment-dialog-eyebrow { color: #6884a2; font-size: 10px; font-weight: 600; }
+.evaluation-assignment-dialog-header h2 { margin: 7px 0 5px; color: #193c63; font-size: 22px; line-height: 1.5; }
+.evaluation-assignment-dialog-header p { margin: 0; color: #7a8fa7; font-size: 11px; line-height: 1.9; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-close { display: grid; place-items: center; flex: none; width: 33px; height: 33px; min-height: 33px; padding: 0; border: 1px solid #d9e4ef; border-radius: 9px; background: #fff; color: #6884a0; font: inherit; font-size: 24px; cursor: pointer; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-close:hover { background: #edf4fc; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-body { display: block; min-width: 0; min-height: 0; margin: 0; padding: 22px 27px; border: 0; overflow: auto; overscroll-behavior: contain; }
+.evaluation-assignment-dialog-employee { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 13px 15px; border: 1px solid #e0e8f1; border-radius: 11px; background: #f9fbfe; }
+.evaluation-assignment-dialog-avatar { display: grid; place-items: center; flex: none; width: 37px; height: 37px; border: 1px solid #d8e6f5; border-radius: 10px; color: #4f79a4; background: #edf4fc; }
+.evaluation-assignment-dialog-avatar svg { width: 21px; height: 21px; }
+.evaluation-assignment-dialog-employee>div { min-width: 0; }
+.evaluation-assignment-dialog-employee strong { display: block; font-size: 13px; line-height: 1.7; }
+.evaluation-assignment-dialog-employee small { display: block; margin-top: 3px; color: #8093a8; font-size: 10px; line-height: 1.9; overflow-wrap: anywhere; }
+.evaluation-assignment-dialog-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+.evaluation-assignment-dialog-slot { min-width: 0; padding: 13px 14px; border: 1px solid #dbe5ef; border-radius: 11px; background: #fff; }
+.evaluation-assignment-dialog-slot.is-active { border-color: #45968e; background: #f4fbf9; box-shadow: 0 0 0 1px #45968e22; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-slot-button { display: block; width: 100%; min-height: 0; padding: 0; border: 0; background: transparent; color: #345c7f; text-align: start; font: inherit; cursor: pointer; }
+.evaluation-assignment-dialog-slot-label { display: flex; justify-content: space-between; gap: 10px; color: #5e7a95; font-size: 11px; font-weight: 600; }
+.evaluation-assignment-dialog-slot-label small { color: #8b9bac; font-size: 10px; font-weight: 400; }
+.evaluation-assignment-dialog-slot-button strong { display: block; margin-top: 9px; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.evaluation-assignment-dialog-slot-hint { display: block; margin-top: 4px; color: #8297a9; font-size: 10px; line-height: 1.8; }
+.evaluation-assignment-dialog-account { display: block; margin-top: 6px; color: #a67c36; font-size: 9px; line-height: 1.7; }
+.evaluation-assignment-dialog-account.is-linked { color: #3a8a78; }
+.evaluation-assignment-dialog-account.is-unknown { color: #718ba4; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-remove { min-height: 0; margin-top: 6px; padding: 2px 0; border: 0; background: transparent; color: #a16067; font: inherit; font-size: 10px; cursor: pointer; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-remove:hover { text-decoration: underline; }
+.evaluation-assignment-dialog-picker { border: 1px solid #dbe5ef; border-radius: 12px; overflow: hidden; }
+.evaluation-assignment-dialog-picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px 0; }
+.evaluation-assignment-dialog-picker-heading strong { color: #365b7d; font-size: 12px; }
+.evaluation-assignment-dialog-picker-heading>span { color: #8497aa; font-size: 10px; }
+.evaluation-assignment-dialog-filters { display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; padding: 13px 14px; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-filters label { display: grid; gap: 7px; min-width: 0; color: #6d869e; font-size: 10px; }
+.evaluation-assignment-dialog-search>div { display: flex; align-items: center; gap: 7px; padding-inline-start: 10px; border: 1px solid #d7e3ef; border-radius: 8px; background: #fff; }
+.evaluation-assignment-dialog-search svg { flex: none; width: 17px; height: 17px; color: #7696b4; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-search input { width: 100%; min-width: 0; min-height: 39px; margin: 0; padding: 8px 0 8px 9px; border: 0; border-radius: 8px; outline: none; background: transparent; color: #315674; font: inherit; font-size: 11px; }
+.evaluation-assignment-dialog-search>div:focus-within { outline: 2px solid #aacceb; outline-offset: 1px; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-branch select { width: 100%; min-width: 0; min-height: 41px; margin: 0; padding: 8px 10px; border: 1px solid #d7e3ef; border-radius: 8px; color: #315674; background: #fff; font: inherit; font-size: 11px; }
+.evaluation-assignment-dialog-results { max-height: 255px; margin: 0; padding: 0 7px 7px; overflow: auto; overscroll-behavior: contain; list-style: none; scrollbar-width: thin; scrollbar-color: #c1d0df transparent; }
+.evaluation-assignment-dialog-results li { margin: 0; padding: 0; }
+.evaluation-assignment-dialog-results li+li { border-top: 1px solid #ecf1f6; }
+.evaluation-assignment-dialog-results li>button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 75px; padding: 9px 8px; border: 1px solid transparent; border-radius: 8px; background: #fff; color: #345a7d; text-align: start; font: inherit; cursor: pointer; }
+.evaluation-assignment-dialog-results li>button:hover { border-color: #dae6f4; background: #f5f9fe; }
+.evaluation-assignment-dialog-results li>button.is-selected { border-color: #c7e4db; background: #f0faf6; }
+.evaluation-assignment-dialog-candidate-avatar { display: grid; place-items: center; flex: none; width: 35px; height: 35px; border: 1px solid #d8e6f5; border-radius: 9px; background: #edf4fd; color: #3d78ab; font-size: 14px; font-weight: 600; }
+.evaluation-assignment-dialog-candidate { flex: 1; min-width: 0; }
+.evaluation-assignment-dialog-candidate strong { display: block; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.evaluation-assignment-dialog-candidate small { display: block; margin-top: 2px; font-size: 9px; line-height: 1.8; }
+.evaluation-assignment-dialog-candidate>small:not(.evaluation-assignment-dialog-account) { color: #8598ac; }
+.evaluation-assignment-dialog-choose { flex: none; color: #397f91; font-size: 10px; }
+.evaluation-assignment-dialog-results .evaluation-assignment-dialog-empty { padding: 26px 14px; color: #8193a6; font-size: 12px; line-height: 2; text-align: center; }
+.evaluation-assignment-dialog-results .evaluation-assignment-dialog-empty button { display: block; width: auto; min-height: 0; margin: 9px auto 0; padding: 5px 10px; border: 1px solid #d9e6f1; border-radius: 7px; background: #f5f9fd; font-size: 11px; }
+.evaluation-assignment-dialog-note { margin: 13px 0 0; padding: 10px 12px; border: 1px solid #f2e7cd; border-radius: 8px; color: #9c814c; background: #fffbf2; font-size: 10px; line-height: 2; }
+.evaluation-assignment-dialog-error { flex: none; margin: 0 27px 17px; padding: 11px 13px; border: 1px solid #f0d4d8; border-radius: 8px; color: #a34e5a; background: #fff4f5; font-size: 12px; line-height: 1.9; }
+.evaluation-assignment-dialog-footer { display: flex; align-items: center; justify-content: space-between; flex: none; gap: 15px; padding: 17px 27px; border-top: 1px solid #e3ebf4; background: #fbfcfe; }
+.evaluation-assignment-dialog-footer>span { color: #8398ab; font-size: 10px; line-height: 1.8; }
+.evaluation-assignment-dialog-footer>div { display: flex; flex: none; gap: 8px; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-footer button { min-height: 40px; padding: 9px 17px; border: 1px solid #d8e3ee; border-radius: 8px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-cancel { color: #6d859b; background: #fff; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-cancel:hover { background: #f0f5fb; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-submit { border-color: #187d7a; color: #fff; background: #187d7a; box-shadow: 0 3px 8px #187d7a22; }
+.evaluation-assignment-dialog .evaluation-assignment-dialog-submit:hover { border-color: #126560; background: #126560; }
+.evaluation-assignment-dialog button:focus-visible, .evaluation-assignment-dialog select:focus-visible { outline: 2px solid #91bfdc; outline-offset: 2px; }
+.evaluation-assignment-dialog button:disabled { opacity: .55; cursor: default; }
+@media (max-width: 600px) {
+  .evaluation-assignment-dialog { width: calc(100vw - 18px); max-height: 94dvh; border-radius: 14px; }
+  .evaluation-assignment-dialog .evaluation-assignment-dialog-form { max-height: 94dvh; }
+  .evaluation-assignment-dialog-header { gap: 12px; padding: 20px 17px 17px; }
+  .evaluation-assignment-dialog-header h2 { font-size: 20px; }
+  .evaluation-assignment-dialog .evaluation-assignment-dialog-body { padding: 18px 17px; }
+  .evaluation-assignment-dialog-slot { padding: 11px; }
+  .evaluation-assignment-dialog-slot-label { flex-wrap: wrap; gap: 4px; }
+  .evaluation-assignment-dialog-filters { grid-template-columns: 1fr; }
+  .evaluation-assignment-dialog-results { max-height: 230px; }
+  .evaluation-assignment-dialog-error { margin-inline: 17px; }
+  .evaluation-assignment-dialog-footer { align-items: flex-end; gap: 10px; padding: 16px 17px; }
+  .evaluation-assignment-dialog-footer>div { gap: 6px; }
+  .evaluation-assignment-dialog .evaluation-assignment-dialog-footer button { padding-inline: 13px; }
+}
+@media (max-width: 390px) {
+  .evaluation-assignment-dialog-slots { grid-template-columns: 1fr; }
+  .evaluation-assignment-dialog-employee { padding: 10px; }
+  .evaluation-assignment-dialog-choose { font-size: 9px; }
+  .evaluation-assignment-dialog-footer { align-items: stretch; flex-direction: column; }
+  .evaluation-assignment-dialog-footer>div { justify-content: flex-end; }
+}

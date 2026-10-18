@@ -19,7 +19,7 @@ const permissions = [
   ["effects.create", "إنشاء الطلبات والإجراءات"],
   ["effects.approve", "اعتماد أو رفض الطلبات"],
   ["effects.manage_deductions", "تسجيل واعتماد الخصومات"],
-  ["goals.view_all", "مشاهدة أهداف الموظفين"], ["goals.manage", "إضافة وتعديل الأهداف"],
+  ["goals.view_all", "مشاهدة أهداف الموظفين"], ["goals.manage", "إضافة الأهداف وتسجيل الإنجاز"],
   ["evaluations.view_all", "مشاهدة تقييمات الموظفين"], ["evaluations.evaluate", "تقييم الموظفين"],
   ["evaluations.assign", "تعيين المقيّمين"], ["reports.view_all", "مشاهدة التقارير"],
   ["reports.export", "تصدير التقارير"], ["audit.view", "مشاهدة سجل التدقيق"],

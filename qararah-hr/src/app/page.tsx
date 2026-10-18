@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { connection } from "next/server";
+import { loadAccessProfile } from "@/lib/supabase/profile";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
@@ -20,12 +22,14 @@ function formatClock(value: string | null) {
 }
 
 export default async function Home() {
+  await connection();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("full_name, role, branch_id").eq("id", user.id).maybeSingle();
+  const { data: profile } = await loadAccessProfile<{full_name:string | null;role:string;branch_id:string | null}>(supabase,user.id,"full_name,role,branch_id,user_roles","full_name,role,branch_id");
   if (!profile) redirect("/setup-required");
+  const roles = [...new Set([profile.role,...((profile.user_roles as string[] | null) ?? [])])];
 
   const now = new Date();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -81,7 +85,7 @@ export default async function Home() {
             <article className="stat-card"><div className="stat-top"><span className="stat-label">حالات تحتاج مراجعة</span><span className="stat-icon rose">!</span></div><div className="stat-value">{reviewCount} <small>حالة</small></div><div className="stat-foot"><span>حسب سجلات البصمة المعتمدة</span></div></article>
           </div>
 
-          <section className="panel workforce-panel"><div className="panel-heading"><div><h2>توزيع الموظفين حسب الصفة</h2><p>اضغط على الصفة لعرض الموظفين النشطين بها</p></div><span className="workforce-total">الإجمالي: {toWesternDigits(employees.length)}</span></div><WorkforceDistribution employees={employees} canManage={profile.role === "admin" || profile.role === "hr"} canAuditEvaluate={profile.role === "auditor"} /></section>
+          <section className="panel workforce-panel"><div className="panel-heading"><div><h2>توزيع الموظفين حسب الصفة</h2><p>اضغط على الصفة لعرض الموظفين النشطين بها</p></div><span className="workforce-total">الإجمالي: {toWesternDigits(employees.length)}</span></div><WorkforceDistribution employees={employees} canManage={roles.some(role=>["admin","hr"].includes(role))} canAuditEvaluate={roles.includes("auditor")} /></section>
 
           <div className="content-grid">
             <section className="panel attendance-panel">

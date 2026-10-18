@@ -1,0 +1,140 @@
+.goal-create-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 43px;
+  padding: 10px 17px;
+  border: 1px solid #fff;
+  border-radius: 10px;
+  background: #fff;
+  color: #173d65;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 3px 12px #071e331a;
+}
+.goal-create-trigger:hover { background: #eef5ff; border-color: #d2e3fb; }
+.goal-create-trigger:focus-visible { outline: 3px solid #97c0f5; outline-offset: 3px; }
+.goal-create-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(700px, calc(100vw - 28px));
+  max-height: min(92dvh, 920px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid #d7e2ed;
+  border-radius: 18px;
+  overflow: auto;
+  background: #fff;
+  color: #203b58;
+  box-shadow: 0 24px 90px #102a4c4d;
+  overscroll-behavior: contain;
+}
+.goal-create-dialog::backdrop { background: #10233e99; backdrop-filter: blur(4px); }
+.goal-create-dialog *, .goal-create-dialog *::before, .goal-create-dialog *::after { box-sizing: border-box; }
+.goal-create-dialog .goal-create-form { display: block; margin: 0; padding: 0; }
+.goal-create-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 25px 27px 22px;
+  border-bottom: 1px solid #e4ecf5;
+  background: #f8fafd;
+}
+.goal-create-eyebrow { color: #6682a0; font-size: 10px; font-weight: 600; }
+.goal-create-header h2 { margin: 7px 0 6px; color: #193b60; font-size: 22px; line-height: 1.5; }
+.goal-create-header p { margin: 0; color: #7d8da1; font-size: 11px; line-height: 1.9; }
+.goal-create-dialog .goal-create-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid #dce5ef;
+  border-radius: 9px;
+  background: #fff;
+  color: #64809c;
+  font: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+.goal-create-dialog .goal-create-close:hover { background: #eef4fb; }
+.goal-create-dialog .goal-create-fields { display: block; min-width: 0; margin: 0; padding: 23px 27px; border: 0; }
+.goal-create-section-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; color: #3a5570; font-size: 12px; font-weight: 600; }
+.goal-create-section-label em { margin-inline-start: 5px; color: #8797a8; font-size: 10px; font-style: normal; font-weight: 400; }
+.goal-create-section-label button { padding: 3px 0; border: 0; background: transparent; color: #2a65a3; font: inherit; font-size: 10px; cursor: pointer; }
+.goal-create-selected { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid #cadcf0; border-radius: 11px; background: #f6faff; }
+.goal-create-avatar { display: grid; place-items: center; flex: none; width: 37px; height: 37px; border: 1px solid #deE8f4; border-radius: 10px; background: #edf4fd; color: #376ca1; font-size: 14px; font-weight: 700; }
+.goal-create-selected>div { flex: 1; min-width: 0; }
+.goal-create-selected strong, .goal-create-employee-name strong { display: block; color: #244766; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.goal-create-selected small, .goal-create-employee-name small { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: #7c90a5; font-size: 10px; line-height: 1.8; font-weight: 400; }
+.goal-create-selected>button { flex: none; min-height: 33px; padding: 6px 10px; border: 1px solid #cfdeef; border-radius: 7px; background: white; color: #326393; font: inherit; font-size: 10px; cursor: pointer; }
+.goal-create-selected>button:hover { background: #edf4ff; }
+.goal-create-picker { border: 1px solid #d7e3f0; border-radius: 11px; overflow: hidden; }
+.goal-create-picker-controls { padding: 14px 12px 0; }
+.goal-create-dialog .goal-create-search-label { display: grid; gap: 7px; color: #5b7692; font-size: 10px; }
+.goal-create-dialog .goal-create-search { display: flex; align-items: center; gap: 8px; padding-inline-start: 12px; border: 1px solid #d3e1f0; border-radius: 8px; background: #fff; color: #7690aa; }
+.goal-create-dialog .goal-create-search:focus-within { outline: 2px solid #b9d4f2; outline-offset: 1px; }
+.goal-create-dialog .goal-create-search input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 0 8px 10px; border: 0; border-radius: 8px; outline: none; background: transparent; color: #254561; font: inherit; font-size: 12px; }
+.goal-create-dialog .goal-create-search input:focus { outline: none; }
+.goal-create-employee-filters { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 13px; }
+.goal-create-dialog .goal-create-employee-filters label { display: grid; gap: 7px; min-width: 0; color: #5b7692; font-size: 10px; }
+.goal-create-dialog .goal-create-employee-filters select { width: 100%; min-width: 0; min-height: 39px; padding: 8px 10px; border: 1px solid #d3e1ef; border-radius: 8px; background: #fff; color: #365b7e; font: inherit; font-size: 11px; cursor: pointer; }
+.goal-create-dialog .goal-create-employee-filters select:focus { outline: 2px solid #a9caef; outline-offset: 1px; }
+.goal-create-results-count { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; padding: 9px 13px; color: #8497ab; font-size: 10px; }
+.goal-create-results-count button { min-height: 25px; padding: 4px 7px; border: 1px solid #dbe6f1; border-radius: 6px; background: #f6f9fe; color: #527aa0; font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
+.goal-create-results-count button:hover { border-color: #b7cee7; background: #edf4fd; }
+.goal-create-employee-results { max-height: 205px; overflow: auto; overscroll-behavior: contain; margin: 0; padding: 0 7px 7px; list-style: none; scrollbar-width: thin; scrollbar-color: #bfcedf transparent; }
+.goal-create-employee-results li { margin: 0; padding: 0; }
+.goal-create-employee-results li+li { border-top: 1px solid #edf1f6; }
+.goal-create-employee-results li>button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 66px; padding: 10px 7px; border: 1px solid transparent; border-radius: 8px; background: #fff; text-align: start; font: inherit; cursor: pointer; }
+.goal-create-employee-results li>button:hover, .goal-create-employee-results li>button.is-selected { border-color: #d5e5f7; background: #f4f8fe; }
+.goal-create-employee-name { flex: 1; min-width: 0; }
+.goal-create-choose { flex: none; color: #4679aa; font-size: 10px; }
+.goal-create-employee-results .goal-create-empty { padding: 24px 12px; color: #8494a7; font-size: 12px; line-height: 1.9; text-align: center; }
+.goal-create-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px 15px; margin-top: 24px; padding-top: 21px; border-top: 1px solid #e7edf5; }
+.goal-create-dialog .goal-create-details label { display: block; min-width: 0; color: #3e5a76; font-size: 11px; font-weight: 600; }
+.goal-create-details label>span { margin-inline-start: 5px; color: #91a0b1; font-size: 10px; font-weight: 400; }
+.goal-create-dialog .goal-create-title, .goal-create-dialog .goal-create-description { grid-column: 1 / -1; }
+.goal-create-dialog .goal-create-details input, .goal-create-dialog .goal-create-details textarea { display: block; width: 100%; min-width: 0; margin-top: 8px; padding: 10px 12px; border: 1px solid #d7e2ef; border-radius: 8px; background: #fff; color: #264866; font: inherit; font-size: 12px; line-height: 1.8; }
+.goal-create-dialog .goal-create-details input { min-height: 43px; }
+.goal-create-dialog .goal-create-details textarea { min-height: 91px; resize: vertical; }
+.goal-create-dialog input::placeholder, .goal-create-dialog textarea::placeholder { color: #97a6b6; font-size: 11px; font-weight: 400; }
+.goal-create-dialog button:focus-visible, .goal-create-dialog .goal-create-details input:focus, .goal-create-dialog textarea:focus { outline: 2px solid #a9caef; outline-offset: 2px; }
+.goal-create-dialog .goal-create-message { margin: 0 27px 21px; padding: 11px 13px; border: 1px solid #f2d6d8; border-radius: 8px; background: #fff4f4; color: #a0444f; font-size: 12px; line-height: 1.9; }
+.goal-create-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 27px; border-top: 1px solid #e3ebf4; background: #fbfcfe; }
+.goal-create-footer p { margin: 0; color: #8899ac; font-size: 10px; line-height: 1.8; }
+.goal-create-footer>div { display: flex; gap: 8px; flex: none; }
+.goal-create-dialog .goal-create-footer button { min-height: 40px; padding: 9px 17px; border: 1px solid #d9e3ee; border-radius: 8px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.goal-create-dialog .goal-create-cancel { background: #fff; color: #697f98; }
+.goal-create-dialog .goal-create-cancel:hover { background: #f1f5fa; }
+.goal-create-dialog .goal-create-submit { border-color: #2361a0; background: #2361a0; color: #fff; box-shadow: 0 3px 8px #2361a01a; }
+.goal-create-dialog .goal-create-submit:hover { border-color: #194f86; background: #194f86; }
+.goal-create-dialog button:disabled { opacity: .55; cursor: default; }
+.goal-create-dialog fieldset:disabled input, .goal-create-dialog fieldset:disabled textarea, .goal-create-dialog fieldset:disabled select { background: #f5f7fa; }
+@media (max-width: 600px) {
+  .goal-create-dialog { width: calc(100vw - 18px); max-height: 94dvh; border-radius: 14px; }
+  .goal-create-header { padding: 20px 17px; gap: 12px; }
+  .goal-create-header h2 { font-size: 20px; }
+  .goal-create-dialog .goal-create-fields { padding: 20px 17px; }
+  .goal-create-selected { flex-wrap: wrap; gap: 9px; padding: 12px; }
+  .goal-create-selected>div { min-width: calc(100% - 52px); }
+  .goal-create-selected>button { margin-inline-start: 46px; }
+  .goal-create-details { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .goal-create-details label:nth-child(2) { grid-column: 1 / -1; }
+  .goal-create-dialog .goal-create-message { margin-inline: 17px; }
+  .goal-create-footer { align-items: stretch; flex-direction: column; gap: 12px; padding: 17px; }
+  .goal-create-footer>div { justify-content: flex-end; }
+}
+@media (max-width: 390px) {
+  .goal-create-details { grid-template-columns: 1fr; }
+  .goal-create-details label { grid-column: auto; }
+  .goal-create-selected>div { min-width: 0; }
+  .goal-create-section-label { align-items: start; flex-direction: column; gap: 5px; }
+}

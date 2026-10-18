@@ -12,7 +12,7 @@ async function loadAllHREvents(supabase: Awaited<ReturnType<typeof createClient>
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase.from("hr_events")
-      .select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,approved_at,payroll_recorded_at,details,created_at,created_by,employee:employees(employee_number,first_name,last_name,full_name,manager_id,branch:branches(name))")
+      .select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,report_revision,report_edit_reason,report_edited_at,report_edited_by,decision_reason,decision_by,decision_at,approved_by,approved_at,payroll_recorded_at,details,created_at,created_by,employee:employees(employee_number,first_name,last_name,full_name,manager_id,branch:branches(name))")
       .order("effective_date", { ascending: false }).order("created_at", { ascending: false }).order("id", { ascending: false })
       .range(from, from + pageSize - 1);
     if (error) throw error;
@@ -58,6 +58,14 @@ export default async function EffectsPage() {
   const requesterRecords = (requesterRows ?? []) as Array<{ event_id: string; full_name: string | null; role: string | null; user_roles: string[] | null; employee_id: string | null }>;
   const requestersByEvent = new Map(requesterRecords.map((requester) => [requester.event_id, requester] as const));
   const eventsWithRequesters = loadedEvents.map((event) => ({ ...event, requester: requestersByEvent.get(event.id) ?? null }));
+  // Resolve only profiles referenced by requests already visible through RLS.
+  const printProfileIds = [...new Set(loadedEvents.flatMap((event) => [
+    ...(Array.isArray(event.details?.responsible_profile_ids) ? event.details.responsible_profile_ids.filter((id): id is string => typeof id === "string") : []),
+    ...(typeof event.details?.responsible_profile_id === "string" ? [event.details.responsible_profile_id] : []),
+    event.decision_by, event.approved_by, event.report_edited_by,
+  ]).concat((approvalResult.data ?? []).flatMap((step) => [step.decided_by, step.approver_profile_id, ...(step.approver_profile_ids ?? [])])).filter((id): id is string => Boolean(id)))];
+  const { data: printProfiles } = printProfileIds.length ? await supabase.from("profiles").select("id,full_name").in("id", printProfileIds) : { data: [] };
+  const approvalNames = Object.fromEntries((printProfiles ?? []).map((row) => [row.id, row.full_name || "مسؤول غير مسمى"]));
   const privateEmployees = new Map((privateData ?? []).map((row) => [row.employee_id, row]));
   const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: privateEmployees.get(employee.id)?.salary_amount ?? null, phone: privateEmployees.get(employee.id)?.phone ?? null }));
 
@@ -81,6 +89,7 @@ export default async function EffectsPage() {
           employees={employeesWithSalary as unknown as EffectEmployee[]}
           jobTitles={(titleData ?? []) as { id: string; name: string }[]}
           events={eventsWithRequesters as unknown as HREvent[]}
+          approvalNames={approvalNames}
           approvalSteps={(approvalResult.data ?? []) as ApprovalStep[]}
           approvalWorkflowAvailable={!approvalResult.error}
         />

@@ -19,8 +19,8 @@ export type AuditRow = {
   branch: { name: string } | null;
 };
 
-const tableLabels: Record<string, string> = { profiles: "حساب مستخدم", employees: "ملف موظف", hr_events: "إجراء موارد بشرية", attendance_records: "سجل حضور", evaluations: "تقييم شهري" };
-const fieldLabels: Record<string, string> = { username: "اسم المستخدم", full_name: "الاسم", role: "الصلاحية", branch_id: "الفرع", employee_id: "الموظف المرتبط", employee_number: "الرقم الوظيفي", status: "الحالة", hired_on: "تاريخ التعيين", zkt_user_id: "كود البصمة", job_title_id: "الوظيفة", department_id: "القسم", event_type: "نوع الإجراء", effective_date: "تاريخ الإجراء", end_date: "تاريخ النهاية", reason: "السبب", amount: "المبلغ", amount_unit: "وحدة المبلغ", decision_reason: "سبب القرار", attendance_date: "تاريخ الحضور", first_in: "وقت الدخول", last_out: "وقت الخروج", exception_note: "ملاحظة البصمة", period_month: "شهر التقييم", total_score: "النتيجة", max_score: "أعلى نتيجة", evaluator_id: "المقيّم", created_by: "سُجل بواسطة", approved_by: "اعتمده" };
+const tableLabels: Record<string, string> = { employee_goals: "أهداف الموظفين", profiles: "حساب مستخدم", employees: "ملف موظف", hr_events: "إجراء موارد بشرية", attendance_records: "سجل حضور", evaluations: "تقييم شهري" };
+const fieldLabels: Record<string, string> = { title: "اسم الهدف", description: "تفاصيل الهدف", target_value: "القيمة المستهدفة", actual_value: "الإنجاز الفعلي", target_unit: "وحدة القياس", goal_revision: "إصدار الهدف", goal_edit_reason: "سبب تعديل الهدف", goal_edited_at: "وقت تعديل الهدف", goal_edited_by: "منفذ تعديل الهدف", deleted_at: "وقت حذف الهدف", deleted_by: "حذف الهدف بواسطة", delete_reason: "سبب حذف الهدف", report_revision: "رقم التعديل", report_edit_reason: "سبب تعديل التقرير", report_edited_at: "وقت التعديل", report_edited_by: "منفذ التعديل", username: "اسم المستخدم", full_name: "الاسم", role: "الصلاحية", branch_id: "الفرع", employee_id: "الموظف المرتبط", employee_number: "الرقم الوظيفي", status: "الحالة", hired_on: "تاريخ التعيين", zkt_user_id: "كود البصمة", job_title_id: "الوظيفة", department_id: "القسم", event_type: "نوع الإجراء", effective_date: "تاريخ الإجراء", end_date: "تاريخ النهاية", reason: "السبب", amount: "المبلغ", amount_unit: "وحدة المبلغ", decision_reason: "سبب القرار", attendance_date: "تاريخ الحضور", first_in: "وقت الدخول", last_out: "وقت الخروج", exception_note: "ملاحظة البصمة", period_month: "شهر التقييم", total_score: "النتيجة", max_score: "أعلى نتيجة", evaluator_id: "المقيّم", created_by: "سُجل بواسطة", approved_by: "اعتمده" };
 const actionLabels = { INSERT: "إضافة", UPDATE: "تعديل", DELETE: "حذف" };
 const fmt = (value: unknown) => value == null || value === "" ? "—" : typeof value === "object" ? JSON.stringify(value) : toWesternDigits(String(value));
 
@@ -46,7 +46,7 @@ export default function AuditLog({ rows }: { rows: AuditRow[] }) {
           const after = row.new_data ?? {};
           return <tr key={row.id}>
             <td dir="ltr">{new Intl.DateTimeFormat("ar-LY", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Tripoli" }).format(new Date(row.created_at))}</td>
-            <td><span className={`audit-action ${row.action.toLowerCase()}`}>{actionLabels[row.action]}</span></td>
+            <td><span className={`audit-action ${row.action.toLowerCase()}`}>{row.entity_table === "employee_goals" && row.action === "UPDATE" && row.new_data?.deleted_at && !row.old_data?.deleted_at ? "حذف هدف" : actionLabels[row.action]}</span></td>
             <td>{tableLabels[row.entity_table] ?? row.entity_table}</td>
             <td>{name}{row.employee?.employee_number && <small dir="ltr">{toWesternDigits(row.employee.employee_number)}</small>}</td>
             <td>{row.branch?.name ?? "—"}</td><td>{row.actor?.full_name ?? "مستخدم النظام"}</td>
