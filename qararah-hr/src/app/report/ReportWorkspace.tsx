@@ -9,7 +9,8 @@ export type EmployeeReport = { id: string; employee_id: string; category: string
 const categories: Record<string, string> = { workplace: "مشكلة في العمل", safety: "سلامة ومخاطر", suggestion: "اقتراح", other: "أخرى" };
 const statusNames = { pending: "وصل للموارد البشرية", in_progress: "قيد المتابعة", resolved: "تمت المعالجة" };
 
-export default function ReportWorkspace({ isHR, employeeId, branchId, userId, reports }: { isHR: boolean; employeeId: string | null; branchId: string | null; userId: string; reports: EmployeeReport[] }) {
+type BranchEmployee = { id: string; full_name: string | null; first_name: string; last_name: string | null; employee_number: string };
+export default function ReportWorkspace({ isHR, isBranchManager, branchEmployees, employeeId, branchId, userId, reports }: { isHR: boolean; isBranchManager: boolean; branchEmployees: BranchEmployee[]; employeeId: string | null; branchId: string | null; userId: string; reports: EmployeeReport[] }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [category, setCategory] = useState("other");
@@ -19,15 +20,17 @@ export default function ReportWorkspace({ isHR, employeeId, branchId, userId, re
   const [statuses, setStatuses] = useState<Record<string, "in_progress" | "resolved">>({});
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reportedEmployeeId, setReportedEmployeeId] = useState("");
 
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!employeeId || !branchId) { setNotice("حسابك يحتاج ربط بملف الموظف والفرع من الموارد البشرية."); return; }
+    const targetEmployeeId = isBranchManager ? reportedEmployeeId : employeeId;
+    if (!targetEmployeeId || !branchId) { setNotice(isBranchManager ? "اختر الموظف الذي ترفع البلاغ نيابةً عنه." : "حسابك يحتاج ربط بملف الموظف والفرع من الموارد البشرية."); return; }
     setBusy(true); setNotice("");
-    const { error } = await supabase.from("employee_reports").insert({ employee_id: employeeId, branch_id: branchId, category, subject: subject.trim(), message: message.trim() });
+    const { error } = await supabase.from("employee_reports").insert({ employee_id: targetEmployeeId, branch_id: branchId, category, subject: subject.trim(), message: message.trim(), submitted_by: userId });
     setBusy(false);
     if (error) { setNotice(`تعذر إرسال الإبلاغ: ${error.message}`); return; }
-    setSubject(""); setMessage(""); setNotice("وصل إبلاغك للموارد البشرية."); router.refresh();
+    setSubject(""); setMessage(""); setReportedEmployeeId(""); setNotice(isBranchManager ? "تم إرسال البلاغ نيابةً عن الموظف إلى الموارد البشرية." : "وصل إبلاغك للموارد البشرية."); router.refresh();
   }
 
   async function handleReport(report: EmployeeReport) {
@@ -39,17 +42,18 @@ export default function ReportWorkspace({ isHR, employeeId, branchId, userId, re
   }
 
   return <div className="employee-app-content">
-    {!isHR && <section className="panel app-form-card"><div className="app-section-heading"><h2>إرسال إبلاغ</h2><p>اكتب المشكلة أو الملاحظة، وستصل للموارد البشرية لتتابعها.</p></div><form className="app-simple-form" onSubmit={submitReport}>
+    {!isHR && <section className="panel app-form-card"><div className="app-section-heading"><h2>{isBranchManager ? "إرسال بلاغ عن موظف" : "إرسال إبلاغ"}</h2><p>{isBranchManager ? "قدّم البلاغ نيابةً عن موظف في فرعك؛ سيظهر ضمن بلاغات الفرع." : "اكتب المشكلة أو الملاحظة، وستصل للموارد البشرية لتتابعها."}</p></div><form className="app-simple-form" onSubmit={submitReport}>
+      {isBranchManager && <label>الموظف<select required value={reportedEmployeeId} onChange={(event) => setReportedEmployeeId(event.target.value)}><option value="">اختر الموظف</option>{branchEmployees.map((employee) => <option value={employee.id} key={employee.id}>{employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" ")} · {toWesternDigits(employee.employee_number)}</option>)}</select></label>}
       <label>نوع الإبلاغ<select value={category} onChange={(event) => setCategory(event.target.value)}>{Object.entries(categories).map(([key, value]) => <option value={key} key={key}>{value}</option>)}</select></label>
       <label>عنوان مختصر<input required maxLength={120} value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="اكتب عنوانًا واضحًا" /></label>
       <label className="wide">التفاصيل<textarea required rows={5} maxLength={4000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="اشرح ما حدث أو اكتب ملاحظتك" /></label>
       <button className="primary-button" type="submit" disabled={busy}>{busy ? "جارٍ الإرسال…" : "إرسال للموارد البشرية"}</button>
     </form>{notice && <p className="app-inline-message" role="status">{notice}</p>}</section>}
-    <section className="panel app-list-card"><div className="app-section-heading"><h2>{isHR ? "إبلاغات الموظفين" : "إبلاغاتي"}</h2><p>{isHR ? "تابع البلاغات والاقتراحات الواردة." : "تابع حالة البلاغات التي أرسلتها."}</p></div>
+    <section className="panel app-list-card"><div className="app-section-heading"><h2>{isHR ? "إبلاغات الموظفين" : isBranchManager ? "بلاغات الفرع" : "إبلاغاتي"}</h2><p>{isHR ? "تابع البلاغات والاقتراحات الواردة." : isBranchManager ? "تابع بلاغات موظفي فرعك وحالة معالجتها." : "تابع حالة البلاغات التي أرسلتها."}</p></div>
       {reports.length ? <div className="app-card-list">{reports.map((report) => {
         const employeeName = report.employee?.full_name || [report.employee?.first_name, report.employee?.last_name].filter(Boolean).join(" ") || "موظف";
         const date = new Intl.DateTimeFormat("ar-LY", { dateStyle: "medium", timeZone: "Africa/Tripoli" }).format(new Date(report.created_at));
-        return <article className="app-item-card app-report-card" key={report.id}><div className="app-report-top"><div><strong>{report.subject}</strong><small>{categories[report.category] ?? "أخرى"} · {date}</small>{isHR && <small>{employeeName} · {report.employee?.branch?.name || "بدون فرع"}</small>}</div><span className={`app-report-status ${report.status}`}>{statusNames[report.status]}</span></div><p className="app-report-message">{report.message}</p>
+        return <article className="app-item-card app-report-card" key={report.id}><div className="app-report-top"><div><strong>{report.subject}</strong><small>{categories[report.category] ?? "أخرى"} · {date}</small>{(isHR || isBranchManager) && <small>{employeeName} · {report.employee?.branch?.name || "بدون فرع"}</small>}</div><span className={`app-report-status ${report.status}`}>{statusNames[report.status]}</span></div><p className="app-report-message">{report.message}</p>
           {report.hr_response && <p className="app-report-response"><b>رد الموارد البشرية:</b> {report.hr_response}</p>}
           {isHR && report.status !== "resolved" && <div className="app-report-reply"><label>الرد أو الإجراء<textarea rows={2} value={responses[report.id] ?? report.hr_response ?? ""} onChange={(event) => setResponses((current) => ({ ...current, [report.id]: event.target.value }))} /></label><label>الحالة<select value={statuses[report.id] ?? "in_progress"} onChange={(event) => setStatuses((current) => ({ ...current, [report.id]: event.target.value as "in_progress" | "resolved" }))}><option value="in_progress">قيد المتابعة</option><option value="resolved">تمت المعالجة</option></select></label><button className="primary-button" type="button" disabled={busy} onClick={() => handleReport(report)}>حفظ</button></div>}
         </article>;

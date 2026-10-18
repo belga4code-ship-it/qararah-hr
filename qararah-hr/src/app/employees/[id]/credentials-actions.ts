@@ -29,15 +29,16 @@ export async function saveEmployeeCredentials(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "انتهت الجلسة. سجّل الدخول مرة أخرى." };
-  let { data: actor, error: actorError } = await supabase.from("profiles").select("role,user_roles,additional_permissions").eq("id", user.id).maybeSingle();
+  let { data: actor, error: actorError } = await supabase.from("profiles").select("role,user_roles,additional_permissions,branch_id").eq("id", user.id).maybeSingle();
   if (!actor && actorError && /user_roles|additional_permissions/i.test(actorError.message)) {
-    const legacyActor = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    const legacyActor = await supabase.from("profiles").select("role,branch_id").eq("id", user.id).maybeSingle();
     actor = legacyActor.data as typeof actor;
     actorError = legacyActor.error;
   }
   const actorPermissions = (actor?.additional_permissions as string[] | null) ?? [];
   const actorRoles = [...new Set([actor?.role, ...((actor?.user_roles as string[] | null) ?? [])].filter(Boolean))] as string[];
   const actorIsAdmin = actorRoles.includes("admin");
+  const actorIsBranchManager = actorRoles.includes("branch_manager");
   if (!actor || (!actorRoles.some((role) => ["hr", "admin"].includes(role)) && !actorPermissions.includes("employees.manage_accounts"))) return { error: "ليس لديك صلاحية إدارة حسابات الموظفين." };
 
   const admin = createAdminClient();
@@ -46,6 +47,7 @@ export async function saveEmployeeCredentials(
     admin.from("profiles").select("id,username,additional_permissions").eq("employee_id", employeeId).maybeSingle(),
   ]);
   if (employeeError || !employee) return { error: "لم يتم العثور على الموظف." };
+  if (actorIsBranchManager && !actorIsAdmin && employee.branch_id !== actor?.branch_id) return { error: "يمكن لمدير الفرع إدارة حسابات الموظفين في فرعه فقط." };
   if (profileError) return { error: "تعذر قراءة ملف الحساب. تأكد من تطبيق تحديث قاعدة البيانات." };
   const existingPermissions = (linkedProfile?.additional_permissions as string[] | null) ?? [];
   if (!actorIsAdmin && additionalPermissions.slice().sort().join("\0") !== existingPermissions.slice().sort().join("\0")) return { error: "صلاحيات المستخدم الإضافية يمنحها أو يغيّرها مدير النظام فقط." };

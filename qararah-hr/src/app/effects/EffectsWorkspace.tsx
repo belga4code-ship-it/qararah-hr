@@ -11,16 +11,16 @@ type Role = "admin" | "hr" | "branch_manager" | "employee" | "auditor" | "accoun
 type EventType = "new_hire" | "leave" | "termination" | "deduction" | "mission" | "late_permission" | "permission";
 export type EffectEmployee = {
   id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null;
-  status: string; branch_id: string; salary_amount?: number | null; phone?: string | null; job_title: { name: string } | null; department?: { name: string } | null; branch: { name: string } | null;
+  status: string; branch_id: string; manager_id?: string | null; salary_amount?: number | null; phone?: string | null; job_title: { name: string } | null; department?: { name: string } | null; branch: { name: string } | null;
 };
 export type HREvent = {
   id: string; employee_id: string; event_type: EventType; effective_date: string; end_date: string | null; reason: string | null;
   amount: number | null; amount_unit: string | null; status: "pending" | "approved" | "rejected";
   decision_reason: string | null; decision_at: string | null; payroll_recorded_at: string | null; approved_at?: string | null;
   details: Record<string, unknown> | null; created_at: string;
-  employee: { employee_number: string; first_name: string; last_name: string | null; full_name: string | null; branch: { name: string } | null } | null;
+  employee: { employee_number: string; first_name: string; last_name: string | null; full_name: string | null; manager_id?: string | null; branch: { name: string } | null } | null;
 };
-export type ApprovalStep = { id: string; event_id: string; step_order: number; approver_role: "branch_manager" | "auditor" | "hr"; status: "pending" | "approved" | "rejected" | "skipped"; decided_by: string | null; decided_at: string | null; reason: string | null };
+export type ApprovalStep = { id: string; event_id: string; step_order: number; approver_role: "branch_manager" | "auditor" | "hr" | "assigned_manager"; approver_profile_id?: string | null; approver_profile_ids?: string[]; status: "pending" | "approved" | "rejected" | "skipped"; decided_by: string | null; decided_at: string | null; reason: string | null };
 
 const eventLabels: Record<EventType, string> = {
   new_hire: "تعيين جديد", leave: "إجازة", termination: "إنهاء خدمة", deduction: "خصم من الراتب",
@@ -57,6 +57,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
   const [hireTitle, setHireTitle] = useState("");
   const [hireDate, setHireDate] = useState(today);
   const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [selectedRequestEmployee, setSelectedRequestEmployee] = useState("");
   const [branchActionType, setBranchActionType] = useState<"deduction" | "termination">("deduction");
   const [effectiveDate, setEffectiveDate] = useState(today);
   const [actionReason, setActionReason] = useState("");
@@ -88,7 +89,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
     return approvalSteps.filter((step) => step.event_id === eventId).sort((a, b) => a.step_order - b.step_order).find((step) => step.status === "pending") ?? null;
   }
   function approverLabel(step: ApprovalStep) {
-    return step.approver_role === "branch_manager" ? "مدير الفرع" : step.approver_role === "auditor" ? "مراجع الحسابات" : "الموارد البشرية";
+    return step.approver_role === "assigned_manager" ? "المسؤول المعيّن" : step.approver_role === "branch_manager" ? "مدير الفرع" : step.approver_role === "auditor" ? "مراجع الحسابات" : "الموارد البشرية";
   }
 
   async function finish(text: string) {
@@ -103,19 +104,21 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
 
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setMessage(null);
-    if (!employeeId || !branchId) return fail("حسابك غير مربوط بملف موظف أو فرع. تواصل مع الموارد البشرية لربط الحساب.");
+    if ((!employeeId && !isBranchManager) || !branchId) return fail("حسابك غير مربوط بملف موظف أو فرع. تواصل مع الموارد البشرية لربط الحساب.");
+    const targetEmployeeId = isBranchManager ? selectedRequestEmployee : employeeId;
+    if (!targetEmployeeId) return fail("اختر الموظف المطلوب تقديم الطلب نيابةً عنه.");
     if (!requestReason.trim()) return fail("اكتب سبب الطلب قبل الإرسال.");
     if (requestType === "leave" && requestEnd && requestEnd < requestStart) return fail("تاريخ نهاية الإجازة لازم يكون بعد بدايتها.");
     setBusy(true);
     const { error } = await supabase.from("hr_events").insert({
-      employee_id: employeeId, branch_id: branchId, event_type: requestType,
+      employee_id: targetEmployeeId, branch_id: branchId, event_type: requestType,
       effective_date: requestStart, end_date: requestType === "leave" && requestEnd ? requestEnd : null,
       reason: requestReason.trim(), details: requestTime ? { requested_time: requestTime } : {},
       created_by: userId, status: "pending",
     });
-    if (error) return fail(error.message.includes("row-level security") ? "ما قدرتش نرسل الطلب. تأكد من ربط حسابك بملف الموظف في Supabase." : `تعذر إرسال الطلب: ${error.message}`);
+    if (error) return fail(error.message.includes("عيّن مسؤولاً") ? "لا يمكن إرسال الطلب قبل أن تعيّن الموارد البشرية مسؤولًا مرتبطًا بحساب دخول لهذا الموظف." : error.message.includes("row-level security") ? "ما قدرتش نرسل الطلب. تأكد من ربط حسابك بملف الموظف في Supabase." : `تعذر إرسال الطلب: ${error.message}`);
     setRequestReason(""); setRequestEnd(""); setRequestTime("");
-    await finish(requestType === "leave" ? "تم إرسال طلب الإجازة إلى مدير الفرع للمرحلة الأولى من الاعتماد." : "تم إرسال الطلب للإدارة للمراجعة.");
+    await finish(isBranchManager ? "تم إرسال الطلب نيابةً عن الموظف إلى مسار المراجعة والاعتماد." : "تم إرسال الطلب إلى المسؤول المعيّن للمراجعة والاعتماد.");
   }
 
   async function addHire(event: FormEvent<HTMLFormElement>) {
@@ -128,7 +131,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
     });
     if (error) return fail(`تعذر تسجيل الموظف: ${error.message}`);
     setHireNumber(""); setHireName(""); setHireTitle("");
-    await finish("تم تسجيل الموظف الجديد في فرعك.");
+    await finish("تم إرسال طلب التعيين للإدارة الرئيسية، ويبقى ملف الموظف غير نشط حتى الموافقة.");
   }
 
   async function submitBranchAction(event: FormEvent<HTMLFormElement>) {
@@ -178,9 +181,11 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
     const activeLeaveStep = item.event_type === "leave" ? currentLeaveStep(item.id) : null;
     if (item.event_type === "leave" && !approvalWorkflowAvailable) return fail("مسار اعتماد الإجازات غير مفعّل في قاعدة البيانات. طبّق تحديثات Supabase أولًا.");
     if (item.event_type === "leave" && !activeLeaveStep) return fail("تعذر تحديد خطوة اعتماد الإجازة الحالية. حدّث الصفحة أو راجع تحديث قاعدة البيانات.");
-    const isFinalLeaveStep = activeLeaveStep?.step_order === 2;
+    const isAdmin = hasRole("admin");
+    const isFinalLeaveStep = activeLeaveStep?.approver_role === "assigned_manager" || activeLeaveStep?.step_order === 2 || isAdmin;
     if (item.event_type === "leave" && activeLeaveStep) {
-      const roleCanApprove = activeLeaveStep.approver_role === "branch_manager" ? isBranchManager : activeLeaveStep.approver_role === "auditor" ? isAuditor : isHeadOffice;
+      const assignedStepProfiles = activeLeaveStep.approver_profile_ids?.length ? activeLeaveStep.approver_profile_ids : [activeLeaveStep.approver_profile_id].filter((value): value is string => Boolean(value));
+      const roleCanApprove = isAdmin || hasPermission("effects.approve") || (activeLeaveStep.approver_role === "assigned_manager" ? assignedStepProfiles.includes(userId) : activeLeaveStep.approver_role === "branch_manager" ? isBranchManager : activeLeaveStep.approver_role === "auditor" ? isAuditor : isHeadOffice);
       if (!roleCanApprove) return fail(`هذه الإجازة بانتظار اعتماد ${approverLabel(activeLeaveStep)}.`);
     }
     let discountAmount: number | null = null;
@@ -195,7 +200,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
           discountAmount = Number(leaveDiscountValues[item.id]);
           if (!Number.isFinite(discountAmount) || discountAmount <= 0) return fail("أدخل مبلغ خصم صحيحًا أكبر من صفر.");
         } else {
-          if (!isAuditor && (!Number.isFinite(monthlySalary) || monthlySalary <= 0)) return fail("راتب الموظف غير مسجل، حدّث بيانات الراتب قبل احتساب خصم الإجازة.");
+          if (!isAuditor && !isAdmin && (!Number.isFinite(monthlySalary) || monthlySalary <= 0)) return fail("راتب الموظف غير مسجل، حدّث بيانات الراتب قبل احتساب خصم الإجازة.");
           discountDays = discountType === "days" ? Number(leaveDiscountValues[item.id]) : discountType === "half_day" ? 0.5 : 0.25;
           if (!Number.isFinite(discountDays) || discountDays <= 0) return fail("أدخل عدد أيام صحيحًا أكبر من صفر.");
           if (Number.isFinite(monthlySalary) && monthlySalary > 0) discountAmount = Math.round((monthlySalary / 30) * discountDays * 100) / 100;
@@ -214,10 +219,15 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
       if (error) return fail(`تعذر حفظ اعتماد الإجازة: ${error.message}`);
       setDecisionReasons((current) => ({ ...current, [item.id]: "" }));
       const followingStep = approvalSteps.find((step) => step.event_id === item.id && step.step_order > (activeLeaveStep?.step_order ?? 0));
-      const nextStepText = status === "rejected" ? "تم رفض الإجازة وتسجيل السبب." : isFinalLeaveStep ? (discountAmount !== null ? `اكتمل اعتماد الإجازة واحتساب خصم ${discountAmount.toFixed(2)} د.ل.` : "اكتمل اعتماد الإجازة من مدير الفرع والجهة المختصة.") : `تم اعتماد الإجازة من مدير الفرع. أُحيلت إلى ${followingStep ? approverLabel(followingStep) : "الاعتماد النهائي"}.`;
+      const nextStepText = status === "rejected" ? "تم رفض الإجازة وتسجيل السبب." : isAdmin ? (discountAmount !== null ? `اعتمد مدير النظام الإجازة واحتسب خصم ${discountAmount.toFixed(2)} د.ل.` : "اعتمد مدير النظام الإجازة وأكمل الموافقة.") : isFinalLeaveStep ? (discountAmount !== null ? `اكتمل اعتماد الإجازة واحتساب خصم ${discountAmount.toFixed(2)} د.ل.` : "اكتمل اعتماد الإجازة من المسؤول المعيّن.") : `تم اعتماد الإجازة. أُحيلت إلى ${followingStep ? approverLabel(followingStep) : "الاعتماد النهائي"}.`;
       await finish(nextStepText);
       return;
     }
+    const targetEmployee = employees.find((row) => row.id === item.employee_id);
+    const assignedProfiles = Array.isArray(item.details?.responsible_profile_ids) ? item.details.responsible_profile_ids as string[] : [];
+    const isDirectManager = assignedProfiles.includes(userId) || Boolean(employeeId && targetEmployee?.manager_id === employeeId);
+    const canApproveDirect = hasRole("admin") || hasPermission("effects.approve") || isDirectManager;
+    if (["permission", "late_permission"].includes(item.event_type) && !canApproveDirect) return fail("اعتماد هذا الطلب متاح للمسؤول المعيّن عن الموظف أو مدير النظام.");
     const { data, error } = await supabase.from("hr_events")
       .update({ status, decision_reason: reason })
       .eq("id", item.id).eq("status", "pending").select("id").maybeSingle();
@@ -245,7 +255,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
     {message && <p className={`effects-message${message.error ? " error" : ""}`} role="status">{message.text}</p>}
     {!approvalWorkflowAvailable && events.some((event) => event.event_type === "leave" && event.status === "pending") && <p className="effects-approval-warning" role="status">مسار اعتماد الإجازات الجديد يحتاج تطبيق تحديث قاعدة البيانات <b>20261027_leave_approval_chain.sql</b>. لا يمكن اعتماد الإجازات المعلقة قبل تطبيقه.</p>}
 
-    {isEmployee && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تقديم طلب</h2><p>الإجازة تمر على مدير الفرع ثم الموارد البشرية، أو مراجع الحسابات لموظفي الحسابات. بقية الأذونات تراجعها الإدارة الرئيسية.</p></div><span className="effects-role-badge">موظف</span></div>
+    {isEmployee && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تقديم طلب</h2><p>تُرسل الإجازات وأذونات الخروج والتأخير إلى المسؤول المعيّن على ملفك. ويستطيع مدير النظام اعتمادها أو رفضها.</p></div><span className="effects-role-badge">موظف</span></div>
       {!employeeId ? <p className="effects-empty-note">حسابك غير مربوط بملف موظف. اطلب من الموارد البشرية ربط الحساب أولًا.</p> : <form className="effects-form-grid" onSubmit={submitRequest}>
         <label>نوع الطلب<select value={requestType} onChange={(event) => setRequestType(event.target.value as EventType)}><option value="leave">إجازة</option><option value="late_permission">إذن تأخير</option><option value="permission">إذن خروج / استئذان</option><option value="mission">مأمورية</option></select></label>
         <label>تاريخ الطلب<input type="date" required value={requestStart} onChange={(event) => setRequestStart(event.target.value)} /></label>
@@ -258,13 +268,24 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
     </section>}
 
     {isBranchManager && <div className="effects-manager-grid">
-      <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تسجيل موظف جديد</h2><p>يُضاف الموظف مباشرة إلى فرعك ويسجل حدث تعيين.</p></div><span className="effects-role-badge">مدير الفرع</span></div>
-        <form className="effects-form-grid" onSubmit={addHire}><label>الكود الوظيفي<input required value={hireNumber} onChange={(event) => setHireNumber(event.target.value)} /></label><label>اسم الموظف بالكامل<input required value={hireName} onChange={(event) => setHireName(event.target.value)} /></label><label>المسمى الوظيفي<select value={hireTitle} onChange={(event) => setHireTitle(event.target.value)}><option value="">غير محدد</option>{jobTitles.map((title) => <option value={title.id} key={title.id}>{title.name}</option>)}</select></label><label>تاريخ التعيين<input type="date" required value={hireDate} onChange={(event) => setHireDate(event.target.value)} /></label><button className="primary-button" type="submit" disabled={busy}>تسجيل التعيين</button></form>
+      <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>طلب تعيين موظف جديد</h2><p>يُرسل الطلب للإدارة الرئيسية؛ يبقى الموظف غير نشط إلى أن توافق الإدارة.</p></div><span className="effects-role-badge">مدير الفرع</span></div>
+        <form className="effects-form-grid" onSubmit={addHire}><label>الكود الوظيفي<input required value={hireNumber} onChange={(event) => setHireNumber(event.target.value)} /></label><label>اسم الموظف بالكامل<input required value={hireName} onChange={(event) => setHireName(event.target.value)} /></label><label>المسمى الوظيفي<select value={hireTitle} onChange={(event) => setHireTitle(event.target.value)}><option value="">غير محدد</option>{jobTitles.map((title) => <option value={title.id} key={title.id}>{title.name}</option>)}</select></label><label>تاريخ التعيين<input type="date" required value={hireDate} onChange={(event) => setHireDate(event.target.value)} /></label><button className="primary-button" type="submit" disabled={busy}>إرسال طلب التعيين</button></form>
       </section>
       <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>إنهاء خدمة أو طلب خصم</h2><p>إنهاء الخدمة يسجل فورًا. الخصم ينتظر اعتماد الإدارة الرئيسية.</p></div></div>
         <form className="effects-form-grid" onSubmit={submitBranchAction}><label className="wide">الموظف{employeeSelect(selectedEmployee, setSelectedEmployee)}</label><label>الإجراء<select value={branchActionType} onChange={(event) => setBranchActionType(event.target.value as "deduction" | "termination")}><option value="deduction">طلب خصم من الراتب</option><option value="termination">إنهاء خدمة</option></select></label><label>التاريخ<input type="date" required value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} /></label>{branchActionType === "deduction" && <label>مبلغ الخصم بالدينار الليبي<input type="number" min="0.01" step="0.01" required value={deductionAmount} onChange={(event) => setDeductionAmount(event.target.value)} /></label>}<label className="wide">السبب<textarea required rows={3} value={actionReason} onChange={(event) => setActionReason(event.target.value)} /></label><button className="primary-button" type="submit" disabled={busy}>{branchActionType === "deduction" ? "رفع الخصم للإدارة" : "تسجيل إنهاء الخدمة"}</button></form>
       </section>
     </div>}
+
+    {isBranchManager && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>طلب لموظف في الفرع</h2><p>قدّم إجازة أو إذنًا أو بلاغ تأخير نيابةً عن الموظف، وسيُسجّل الطلب باسمك كمقدّم عنه.</p></div><span className="effects-role-badge">ضمن فرعك</span></div><form className="effects-form-grid" onSubmit={submitRequest}>
+      <label className="wide">الموظف{employeeSelect(selectedRequestEmployee, setSelectedRequestEmployee)}</label>
+      <label>نوع الطلب<select value={requestType} onChange={(event) => setRequestType(event.target.value as EventType)}><option value="leave">إجازة</option><option value="late_permission">إذن تأخير</option><option value="permission">إذن خروج / استئذان</option><option value="mission">مأمورية</option></select></label>
+      <label>تاريخ الطلب<input type="date" required value={requestStart} onChange={(event) => setRequestStart(event.target.value)} /></label>
+      {requestType === "leave" && <label>إلى تاريخ<input type="date" min={requestStart} required value={requestEnd} onChange={(event) => setRequestEnd(event.target.value)} /></label>}
+      {requestType === "late_permission" && <label>وقت الوصول المتوقع<input type="time" value={requestTime} onChange={(event) => setRequestTime(event.target.value)} /></label>}
+      {requestType === "permission" && <label>الوقت المتوقع<input type="time" value={requestTime} onChange={(event) => setRequestTime(event.target.value)} /></label>}
+      <label className="wide">السبب والتفاصيل<textarea required rows={3} value={requestReason} onChange={(event) => setRequestReason(event.target.value)} placeholder="اكتب سبب الطلب وأي تفاصيل يحتاجها المسؤول" /></label>
+      <button className="primary-button" type="submit" disabled={busy}>{busy ? "جارٍ الإرسال…" : "إرسال الطلب للمراجعة"}</button>
+    </form></section>}
 
     {canManageDeductions && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تسجيل خصم على الراتب</h2><p>الخصم يُحفظ مع المبلغ والسبب والموظف كإجراء معتمد ومرحّل للراتب.</p></div><span className="effects-role-badge head-office">{isAuditor ? "مراجع حسابات" : isHeadOffice ? "الإدارة الرئيسية" : "صلاحية خصومات"}</span></div>
       <form className="effects-form-grid" onSubmit={recordDirectDeduction}><label className="wide">الموظف{employeeSelect(directEmployee, setDirectEmployee)}</label><label>تاريخ الخصم<input type="date" required value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} /></label><label>المبلغ بالدينار الليبي<input type="number" min="0.01" step="0.01" required value={directAmount} onChange={(event) => setDirectAmount(event.target.value)} /></label><label className="wide">سبب الخصم<textarea required rows={2} value={directReason} onChange={(event) => setDirectReason(event.target.value)} placeholder="السبب الذي سيظهر في سجل الموظف" /></label><button className="primary-button" type="submit" disabled={busy}>اعتماد وتسجيل الخصم</button></form>
@@ -276,10 +297,16 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
         const time = typeof item.details?.requested_time === "string" ? item.details.requested_time : null;
         const leaveSteps = approvalSteps.filter((step) => step.event_id === item.id).sort((a, b) => a.step_order - b.step_order);
         const activeLeaveStep = item.event_type === "leave" ? leaveSteps.find((step) => step.status === "pending") : null;
-        const isFinalLeaveStep = activeLeaveStep?.step_order === 2;
+        const isFinalLeaveStep = activeLeaveStep?.step_order === 2 || hasRole("admin");
+        const assignedProfiles = Array.isArray(item.details?.responsible_profile_ids) ? item.details.responsible_profile_ids as string[] : [];
+        const stepProfiles = activeLeaveStep?.approver_profile_ids?.length ? activeLeaveStep.approver_profile_ids : [activeLeaveStep?.approver_profile_id].filter((value): value is string => Boolean(value));
+        const isAssignedApprover = assignedProfiles.includes(userId)
+          || Boolean(activeLeaveStep?.approver_role === "assigned_manager" && stepProfiles.includes(userId))
+          || Boolean(employeeId && item.employee?.manager_id === employeeId);
         const canDecideLeave = item.event_type === "leave" && approvalWorkflowAvailable && item.status === "pending" && activeLeaveStep !== undefined && activeLeaveStep !== null
-          && (activeLeaveStep.approver_role === "branch_manager" ? isBranchManager : activeLeaveStep.approver_role === "auditor" ? isAuditor : isHeadOffice);
-        const canDecide = item.status === "pending" && (canDecideLeave || (item.event_type !== "leave" && (canApproveRequests || (canManageDeductions && item.event_type === "deduction"))));
+          && (hasRole("admin") || hasPermission("effects.approve") || (activeLeaveStep.approver_role === "assigned_manager" ? (activeLeaveStep.approver_profile_ids?.length ? activeLeaveStep.approver_profile_ids : [activeLeaveStep.approver_profile_id].filter((value): value is string => Boolean(value))).includes(userId) : activeLeaveStep.approver_role === "branch_manager" ? isBranchManager : activeLeaveStep.approver_role === "auditor" ? isAuditor : isHeadOffice));
+        const canDecideDirect = ["permission", "late_permission"].includes(item.event_type) && (hasRole("admin") || hasPermission("effects.approve") || isAssignedApprover);
+        const canDecide = item.status === "pending" && (canDecideLeave || canDecideDirect || (item.event_type !== "leave" && !["permission", "late_permission"].includes(item.event_type) && (canApproveRequests || (canManageDeductions && item.event_type === "deduction"))));
         const leaveDiscount = leaveDiscountTypes[item.id] ?? "none";
         const employeeSalary = Number(employees.find((row) => row.id === item.employee_id)?.salary_amount);
         const employeeRecord = employees.find((row) => row.id === item.employee_id);
@@ -299,7 +326,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
           {item.amount != null && item.event_type === "leave" && <span className="effects-payroll-note">خصم الإجازة: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</span>}
           {item.payroll_recorded_at && <span className="effects-payroll-note">تم تسجيله ضمن خصومات الراتب بتاريخ {toWesternDigits(item.payroll_recorded_at.slice(0, 10))}</span>}
           {canSendDeductionNotice && (waNumber ? <a className="whatsapp-notice-button" href={whatsappHref} target="_blank" rel="noopener noreferrer">إرسال إشعار واتساب</a> : <span className="effects-no-phone-note">لا يمكن تجهيز الرسالة: رقم هاتف الموظف غير مسجل.</span>)}
-          {canDecide && <div className="effects-decision"><label>سبب الاعتماد أو الرفض<textarea rows={2} required value={decisionReasons[item.id] ?? ""} onChange={(event) => setDecisionReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label>{item.event_type === "leave" && isFinalLeaveStep && <div className="effects-leave-discount"><p>هذه آخر مرحلة اعتماد. يمكن تحديد خصم الإجازة إذا لزم.</p><label>طريقة خصم الإجازة<select value={leaveDiscount} onChange={(event) => setLeaveDiscountTypes((current) => ({ ...current, [item.id]: event.target.value as typeof leaveDiscount }))}><option value="none">بدون خصم</option><option value="fixed">خصم مبلغ ثابت</option><option value="days">خصم بعدد الأيام</option><option value="half_day">خصم نصف يوم</option><option value="quarter_day">خصم ربع يوم</option></select></label>{leaveDiscount !== "none" && <>{isAuditor && !employeeSalary ? <small>سيتم حساب الخصم من بيانات الراتب المحمية عند الاعتماد النهائي.</small> : <small>الراتب الشهري: {Number.isFinite(employeeSalary) && employeeSalary > 0 ? `${toWesternDigits(employeeSalary.toFixed(2))} د.ل` : "غير مسجل"} · أجر اليوم = الراتب ÷ 30 = {leaveDailyRate ? `${toWesternDigits(leaveDailyRate.toFixed(2))} د.ل` : "—"}</small>}{(leaveDiscount === "fixed" || leaveDiscount === "days") && <label>{leaveDiscount === "fixed" ? "مبلغ الخصم بالدينار" : "عدد أيام الخصم"}<input type="number" min="0.01" step="0.01" required value={leaveDiscountValues[item.id] ?? ""} onChange={(event) => setLeaveDiscountValues((current) => ({ ...current, [item.id]: event.target.value }))} /></label>}{(!isAuditor || employeeSalary) && <small>قيمة الخصم المتوقعة: {Number.isFinite(leaveDiscountPreview) && leaveDiscountPreview > 0 ? `${toWesternDigits(leaveDiscountPreview.toFixed(2))} د.ل` : "أدخل القيمة لحساب الخصم"}</small>}</>}</div>}<div>{item.event_type === "deduction" && <small>اعتماد الخصم يسجله ضمن خصومات الرواتب.</small>}<button type="button" className="primary-button" disabled={busy} onClick={() => decide(item, "approved")}>{item.event_type === "deduction" ? "اعتماد وتسجيل الخصم" : item.event_type === "leave" && !isFinalLeaveStep ? "موافقة مدير الفرع وإحالة" : "اعتماد الطلب"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => decide(item, "rejected")}>رفض الطلب</button></div></div>}
+          {canDecide && <div className="effects-decision"><label>سبب الاعتماد أو الرفض<textarea rows={2} required value={decisionReasons[item.id] ?? ""} onChange={(event) => setDecisionReasons((current) => ({ ...current, [item.id]: event.target.value }))} /></label>{item.event_type === "leave" && isFinalLeaveStep && <div className="effects-leave-discount"><p>{hasRole("admin") && activeLeaveStep?.step_order !== 2 ? "بصفتك مدير النظام، سيُكمل اعتمادك جميع مراحل الإجازة. ويمكن تحديد الخصم إذا لزم." : "هذه آخر مرحلة اعتماد. يمكن تحديد خصم الإجازة إذا لزم."}</p><label>طريقة خصم الإجازة<select value={leaveDiscount} onChange={(event) => setLeaveDiscountTypes((current) => ({ ...current, [item.id]: event.target.value as typeof leaveDiscount }))}><option value="none">بدون خصم</option><option value="fixed">خصم مبلغ ثابت</option><option value="days">خصم بعدد الأيام</option><option value="half_day">خصم نصف يوم</option><option value="quarter_day">خصم ربع يوم</option></select></label>{leaveDiscount !== "none" && <>{isAuditor && !employeeSalary ? <small>سيتم حساب الخصم من بيانات الراتب المحمية عند الاعتماد النهائي.</small> : <small>الراتب الشهري: {Number.isFinite(employeeSalary) && employeeSalary > 0 ? `${toWesternDigits(employeeSalary.toFixed(2))} د.ل` : "غير مسجل"} · أجر اليوم = الراتب ÷ 30 = {leaveDailyRate ? `${toWesternDigits(leaveDailyRate.toFixed(2))} د.ل` : "—"}</small>}{(leaveDiscount === "fixed" || leaveDiscount === "days") && <label>{leaveDiscount === "fixed" ? "مبلغ الخصم بالدينار" : "عدد أيام الخصم"}<input type="number" min="0.01" step="0.01" required value={leaveDiscountValues[item.id] ?? ""} onChange={(event) => setLeaveDiscountValues((current) => ({ ...current, [item.id]: event.target.value }))} /></label>}{(!isAuditor || employeeSalary) && <small>قيمة الخصم المتوقعة: {Number.isFinite(leaveDiscountPreview) && leaveDiscountPreview > 0 ? `${toWesternDigits(leaveDiscountPreview.toFixed(2))} د.ل` : "أدخل القيمة لحساب الخصم"}</small>}</>}</div>}<div>{item.event_type === "deduction" && <small>اعتماد الخصم يسجله ضمن خصومات الرواتب.</small>}<button type="button" className="primary-button" disabled={busy} onClick={() => decide(item, "approved")}>{item.event_type === "deduction" ? "اعتماد وتسجيل الخصم" : item.event_type === "leave" && hasRole("admin") ? "اعتماد الإجازة بالكامل" : item.event_type === "leave" && !isFinalLeaveStep ? "موافقة مدير الفرع وإحالة" : "اعتماد الطلب"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => decide(item, "rejected")}>رفض الطلب</button></div></div>}
         </article>;
       })}</div> : <p className="effects-empty-note">ما فيش طلبات أو مؤثرات مسجلة لحد الآن.</p>}
     </section>

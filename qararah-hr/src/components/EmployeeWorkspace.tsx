@@ -50,7 +50,7 @@ export default async function EmployeeWorkspace({ children, userName, email, rol
     if (href === "/goals") return true;
     if (href === "/evaluations") return hasRole("admin", "hr", "branch_manager", "accountant", "auditor") || hasPermission("evaluations.view_all", "evaluations.evaluate", "evaluations.assign");
     if (href === "/my-evaluations" || href === "/report") return true;
-    if (href === "/attendance/report") return hasRole("admin", "hr", "auditor") || hasPermission("reports.view_all", "reports.export");
+    if (href === "/attendance/report") return hasRole("admin", "hr", "auditor", "branch_manager") || hasPermission("reports.view_all", "reports.export");
     if (href === "/audit") return hasRole("admin", "hr") || hasPermission("audit.view");
     return false;
   };

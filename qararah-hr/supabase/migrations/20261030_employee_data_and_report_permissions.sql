@@ -2,6 +2,7 @@
 -- grants retain their intended scope.
 drop policy if exists "branch scoped employee read" on public.employees;
 drop policy if exists "secondary roles read all employees" on public.employees;
+drop policy if exists "role and permission scoped employee read" on public.employees;
 create policy "role and permission scoped employee read" on public.employees
 for select to authenticated
 using (
@@ -28,6 +29,7 @@ using (
 
 drop policy if exists "branch scoped attendance read" on public.attendance_records;
 drop policy if exists "secondary roles read attendance" on public.attendance_records;
+drop policy if exists "role and permission scoped attendance read" on public.attendance_records;
 create policy "role and permission scoped attendance read" on public.attendance_records
 for select to authenticated
 using (
@@ -45,6 +47,7 @@ using (
 );
 
 drop policy if exists "branch scoped imports read" on public.attendance_imports;
+drop policy if exists "role and permission scoped attendance imports read" on public.attendance_imports;
 create policy "role and permission scoped attendance imports read" on public.attendance_imports
 for select to authenticated
 using (
@@ -62,6 +65,7 @@ using (
 
 -- Apply the same multi-role rules to HR events; employees remain self-scoped.
 drop policy if exists "role scoped events read" on public.hr_events;
+drop policy if exists "role and permission scoped events read" on public.hr_events;
 create policy "role and permission scoped events read" on public.hr_events
 for select to authenticated
 using (
@@ -84,6 +88,7 @@ using (
 -- A permission to see all records is read-only. Existing export-capable roles
 -- retain their access; other users need the explicit reports.export grant.
 drop policy if exists "Employees read own goals" on public.employee_goals;
+drop policy if exists "role and permission scoped goal read" on public.employee_goals;
 create policy "role and permission scoped goal read" on public.employee_goals
 for select to authenticated
 using (
@@ -94,6 +99,7 @@ using (
 );
 
 drop policy if exists "Employees read own evaluations" on public.evaluations;
+drop policy if exists "role and permission scoped evaluation read" on public.evaluations;
 create policy "role and permission scoped evaluation read" on public.evaluations
 for select to authenticated
 using (

@@ -182,10 +182,20 @@ export default function WorkforceEmployeeModal({ employee, onClose, canManage, c
     const reason = decisionReasons[request.id]?.trim();
     if (!reason) return setMessage({ text: "اكتب رد الإدارة وسبب القرار أولًا.", error: true });
     setBusy(true); setMessage(null);
-    const { data: updated, error } = await supabase.from("hr_events").update({ status, decision_reason: reason }).eq("id", request.id).eq("status", "pending").select("id").maybeSingle();
+    let error: { message: string } | null = null;
+    if (request.event_type === "leave") {
+      const result = await supabase.rpc("decide_hr_event_approval", { p_event_id: request.id, p_status: status, p_reason: reason, p_discount_type: "none", p_discount_value: null });
+      error = result.error;
+    } else {
+      const result = await supabase.from("hr_events").update({ status, decision_reason: reason }).eq("id", request.id).eq("status", "pending").select("id").maybeSingle();
+      error = result.error;
+      if (!result.data && !error) {
+        setBusy(false);
+        return setMessage({ text: "الطلب لم يعد قيد المراجعة. حدّث بيانات الموظف.", error: true });
+      }
+    }
     setBusy(false);
     if (error) return setMessage({ text: `تعذر حفظ الرد: ${error.message}`, error: true });
-    if (!updated) return setMessage({ text: "الطلب لم يعد قيد المراجعة. حدّث بيانات الموظف.", error: true });
     setData((current) => ({ ...current, requests: current.requests.map((row) => row.id === request.id ? { ...row, status, decision_reason: reason } : row) }));
     setMessage({ text: status === "approved" ? "تم اعتماد الطلب وإرسال رد الإدارة." : "تم رفض الطلب وحفظ رد الإدارة." });
   }

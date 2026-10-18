@@ -12,7 +12,7 @@ async function loadAllHREvents(supabase: Awaited<ReturnType<typeof createClient>
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase.from("hr_events")
-      .select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,approved_at,payroll_recorded_at,details,created_at,employee:employees(employee_number,first_name,last_name,full_name,branch:branches(name))")
+      .select("id,employee_id,event_type,effective_date,end_date,reason,amount,amount_unit,status,decision_reason,decision_at,approved_at,payroll_recorded_at,details,created_at,employee:employees(employee_number,first_name,last_name,full_name,manager_id,branch:branches(name))")
       .order("effective_date", { ascending: false }).order("created_at", { ascending: false }).order("id", { ascending: false })
       .range(from, from + pageSize - 1);
     if (error) throw error;
@@ -38,10 +38,9 @@ export default async function EffectsPage() {
 
   let employeesQuery = supabase
     .from("employees")
-    .select("id,employee_number,first_name,last_name,full_name,status,branch_id,job_title:job_titles(name),department:departments(name),branch:branches(name)")
+    .select("id,employee_number,first_name,last_name,full_name,status,branch_id,manager_id,job_title:job_titles(name),department:departments(name),branch:branches(name)")
     .order("employee_number");
   if (hasRole("branch_manager", "yard_supervisor") && !hasRole("admin", "hr", "auditor") && !extraPermissions.includes("employees.view_all")) employeesQuery = employeesQuery.eq("branch_id", profile.branch_id ?? "00000000-0000-0000-0000-000000000000");
-  if (hasRole("employee") && userRoles.length === 1) employeesQuery = employeesQuery.eq("id", profile.employee_id ?? "00000000-0000-0000-0000-000000000000");
 
   const [{ data: employeeData }, { data: eventData }, { data: titleData }, { data: branchData }, { data: privateData }, approvalResult] = await Promise.all([
     employeesQuery,
@@ -49,7 +48,7 @@ export default async function EffectsPage() {
     hasRole("branch_manager") ? supabase.from("job_titles").select("id,name").order("name") : Promise.resolve({ data: [] }),
     profile.branch_id ? supabase.from("branches").select("name").eq("id", profile.branch_id).maybeSingle() : Promise.resolve({ data: null }),
     hasRole("admin", "hr") || extraPermissions.includes("employees.view_sensitive") ? supabase.from("employee_private").select("employee_id,salary_amount,phone") : Promise.resolve({ data: [] }),
-    supabase.from("hr_event_approval_steps").select("id,event_id,step_order,approver_role,status,decided_by,decided_at,reason").order("step_order"),
+    supabase.from("hr_event_approval_steps").select("id,event_id,step_order,approver_role,approver_profile_id,approver_profile_ids,status,decided_by,decided_at,reason").order("step_order"),
   ]);
   const privateEmployees = new Map((privateData ?? []).map((row) => [row.employee_id, row]));
   const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: privateEmployees.get(employee.id)?.salary_amount ?? null, phone: privateEmployees.get(employee.id)?.phone ?? null }));

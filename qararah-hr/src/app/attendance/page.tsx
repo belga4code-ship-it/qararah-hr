@@ -23,11 +23,12 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   const permissions = (profile.additional_permissions as string[] | null) ?? [];
   const hasRole = (...values: string[]) => values.some((value) => roles.includes(value));
   const isHR = hasRole("admin", "hr");
-  const canExportAttendanceReport = isHR || permissions.includes("reports.export");
+  const isBranchManager = hasRole("branch_manager");
+  const canExportAttendanceReport = isHR || isBranchManager || permissions.includes("reports.export");
   const isAuditor = hasRole("auditor");
   const canViewAttendance = isHR || isAuditor || hasRole("branch_manager", "accountant", "yard_supervisor") || permissions.some((permission) => ["attendance.view_all", "attendance.manage", "attendance.import", "reports.view_all", "reports.export"].includes(permission));
   if (!canViewAttendance) redirect("/");
-  const canExportReports = isHR || isAuditor || permissions.includes("reports.export");
+  const canExportReports = isHR || isAuditor || isBranchManager || permissions.includes("reports.export");
 
   const userName = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "accountant" ? "محاسب" : profile.role === "branch_manager" ? "مدير الفرع" : "موظف";
@@ -64,7 +65,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
       <main className="attendance-page page-content" dir="rtl">
         <section className="attendance-welcome">
           <div><p className="eyebrow">متابعة الدوام</p><h1>الحضور والانصراف</h1><p className="welcome-copy">الفترة المحددة: {periodSummary} · سجلات الحضور والانصراف المستوردة.</p></div>
-          <div className="attendance-page-actions">{canExportAttendanceReport && <AttendancePunchExport from={rangeStart} to={rangeEnd} />}<MonthlyTardinessExport month={selectedMonth} canExport={canExportReports} />{(isHR || isAuditor || permissions.includes("reports.view_all") || permissions.includes("reports.export")) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{isHR && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
+          <div className="attendance-page-actions">{canExportAttendanceReport && <AttendancePunchExport from={rangeStart} to={rangeEnd} />}<MonthlyTardinessExport month={selectedMonth} canExport={canExportReports} />{(isHR || isAuditor || isBranchManager || permissions.includes("reports.view_all") || permissions.includes("reports.export")) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{isHR && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
         </section>
 
         <div className="attendance-stats">
