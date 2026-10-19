@@ -19,7 +19,8 @@ type Props = {
   employees: GoalEmployeeOption[];
   defaultEmployeeId: string;
   defaultMonth: string;
-  onCreated: (result: { employeeId: string; month: string }) => void;
+  tasksAvailable: boolean;
+  onCreated: (result: { employeeId: string; month: string; warning?: string }) => void;
 };
 
 function normalizeSearch(value: string) {
@@ -33,7 +34,10 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
-export default function GoalCreateDialog({ employees, defaultEmployeeId, defaultMonth, onCreated }: Props) {
+type GoalTaskDraft = { title: string; due_date: string };
+function dueDateFor(month: string) { if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) return ""; const date = new Date(`${month}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + 1); date.setUTCDate(10); return date.toISOString().slice(0, 10); }
+
+export default function GoalCreateDialog({ employees, defaultEmployeeId, defaultMonth, tasksAvailable, onCreated }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
@@ -51,6 +55,7 @@ export default function GoalCreateDialog({ employees, defaultEmployeeId, default
   const [target, setTarget] = useState("");
   const [unit, setUnit] = useState("");
   const [description, setDescription] = useState("");
+  const [tasks, setTasks] = useState<GoalTaskDraft[]>([{ title: "", due_date: dueDateFor(defaultMonth) }]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const selectedEmployee = employees.find((employee) => employee.id === employeeId);
@@ -95,6 +100,7 @@ export default function GoalCreateDialog({ employees, defaultEmployeeId, default
     setTarget("");
     setUnit("");
     setDescription("");
+    setTasks([{ title: "", due_date: dueDateFor(defaultMonth) }]);
     setMessage("");
     dialog.current?.showModal();
     requestAnimationFrame(() => (hasDefaultEmployee ? titleInput : searchInput).current?.focus());
@@ -127,6 +133,12 @@ export default function GoalCreateDialog({ employees, defaultEmployeeId, default
       titleInput.current?.focus();
       return;
     }
+    const taskList = tasks.map(task => ({ title: task.title.trim(), due_date: task.due_date })).filter(task => task.title);
+    if (!taskList.length) {
+      setMessage("أضف مهمة واحدة على الأقل لكل هدف.");
+      return;
+    }
+    if (taskList.some(task => !task.due_date)) { setMessage("حدد موعد تسليم لكل مهمة."); return; }
     if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) {
       setMessage("اختر شهرًا صحيحًا للهدف.");
       return;
@@ -150,7 +162,7 @@ export default function GoalCreateDialog({ employees, defaultEmployeeId, default
         setMessage("تعذر التحقق من حسابك. حدّث الصفحة وسجّل دخولك مجددًا.");
         return;
       }
-      const { error } = await supabase.from("employee_goals").insert({
+      const { data: goal, error } = await supabase.from("employee_goals").insert({
         employee_id: selectedEmployee.id,
         period_month: `${month}-01`,
         title: title.trim(),
@@ -158,11 +170,17 @@ export default function GoalCreateDialog({ employees, defaultEmployeeId, default
         target_value: targetValue,
         target_unit: unit.trim() || null,
         created_by: authData.user.id,
-      });
-      if (error) {
+      }).select("id").single();
+      if (error || !goal) {
         setMessage(/row-level security|permission denied/i.test(error.message)
           ? "لا يملك حسابك صلاحية إضافة هدف لهذا الموظف. حدّث الصفحة للتحقق من الصلاحيات."
           : `تعذر حفظ الهدف: ${error.message}`);
+        return;
+      }
+      const { error: taskError } = await supabase.from("employee_goal_tasks").insert(taskList.map((task, index) => ({ goal_id: goal.id, title: task.title, sort_order: index, due_date: task.due_date, created_by: authData.user.id })));
+      if (taskError) {
+        dialog.current?.close();
+        onCreated({ employeeId: selectedEmployee.id, month, warning: `حُفظ الهدف لكن تعذر حفظ مهامه (${taskError.message}). أضف المهام من تفاصيل الهدف.` });
         return;
       }
       dialog.current?.close();
@@ -176,7 +194,7 @@ export default function GoalCreateDialog({ employees, defaultEmployeeId, default
   }
 
   return <>
-    <button type="button" className="goal-create-trigger" onClick={open}>
+    <button type="button" className="goal-create-trigger" onClick={open} disabled={!tasksAvailable} title={!tasksAvailable ? "طبّق ترحيل مهام الأهداف في قاعدة البيانات أولًا" : undefined}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
       إضافة هدف
     </button>
@@ -225,11 +243,12 @@ export default function GoalCreateDialog({ employees, defaultEmployeeId, default
 
           <div className="goal-create-details">
             <label className="goal-create-title">اسم الهدف <span>مطلوب</span><input ref={titleInput} required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: متابعة الزبائن" /></label>
-            <label>شهر الهدف <span>مطلوب</span><input type="month" required value={month} onChange={(event) => setMonth(event.target.value)} /></label>
+            <label>شهر الهدف <span>مطلوب</span><input type="month" required value={month} onChange={(event) => { const next = event.target.value; const oldDefault = dueDateFor(month); const nextDefault = dueDateFor(next); setMonth(next); setTasks(current => current.map(task => ({ ...task, due_date: task.due_date === oldDefault ? nextDefault : task.due_date }))); }} /></label>
             <label>القيمة المستهدفة <span>اختياري</span><input type="number" min="0" max="9999999999.99" step="0.01" value={target} onChange={(event) => setTarget(event.target.value)} placeholder="مثال: 20" /></label>
             <label>وحدة القياس <span>اختياري</span><input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="زيارة، فاتورة، د.ل…" /></label>
             <label className="goal-create-description">تفاصيل الهدف <span>اختياري</span><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="وضّح المطلوب وطريقة قياس الإنجاز…" /></label>
           </div>
+        <section className="goal-create-task-fields" aria-label="مهام الهدف"><div><strong>مهام الهدف <em>مطلوب</em></strong><small>إنجاز المهام يقيس التنفيذ، وموعدها هو 10 من الشهر التالي افتراضيًا.</small></div>{tasks.map((task, index) => <label key={index}><span>المهمة {index + 1}</span><div><input required maxLength={300} value={task.title} onChange={event => setTasks(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} placeholder="مثال: مطابقة مصرف الجمهورية"/><input aria-label={`موعد تسليم المهمة ${index + 1}`} type="date" required value={task.due_date} onChange={event => setTasks(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, due_date: event.target.value } : item))}/><button type="button" aria-label={`حذف المهمة ${index + 1}`} disabled={tasks.length === 1} onClick={() => setTasks(current => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></div></label>)}<button type="button" className="goal-create-add-task" onClick={() => setTasks(current => [...current, { title: "", due_date: dueDateFor(month) }])}>＋ إضافة مهمة أخرى</button></section>
         </fieldset>
 
         {message && <p className="goal-create-message" role="alert">{message}</p>}

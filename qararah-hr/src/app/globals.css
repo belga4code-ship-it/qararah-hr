@@ -683,3 +683,55 @@ thead{background:#f7f3e9}th{color:#807964}td{border-color:#f0ecdf;color:#625e53}
 @media(max-width:700px){.employee-profile-tabs{gap:12px}.employee-profile-tab-list{top:73px;gap:4px;padding:5px;border-radius:12px}.employee-profile-tab-list button{min-height:40px;padding:8px 12px;font-size:12px}.employee-responsibles .employee-fields-grid{grid-template-columns:1fr}.employee-responsibles-actions .employee-save-button{width:100%}}
 .employee-responsible-block{display:grid;grid-template-columns:minmax(230px,1fr) minmax(300px,1.1fr);gap:20px;align-items:start;padding:19px 0;border-top:1px solid #edf1f5}.employee-responsible-block:first-of-type{border-top:0;padding-top:0}.employee-responsible-block>div:first-child h3{margin:0;color:#1e293b;font-size:15px}.employee-responsible-block>div:first-child p{margin:7px 0 0;color:#64748b;font-size:12px;line-height:1.8}.employee-responsible-block form{display:grid;gap:10px}.employee-responsible-value{margin:0;padding:12px 14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;color:#334155;font-size:13px}.employee-responsible-block .employee-responsibles-actions{margin-top:2px}.employee-responsible-block .employee-save-message{margin:0}
 @media(max-width:700px){.employee-responsible-block{grid-template-columns:1fr;gap:12px;padding:16px 0}.employee-responsible-block form{min-width:0}}
+.workforce-goal-section-note{display:block;margin-top:5px;color:#64748b;font-size:10px;line-height:1.7}
+.workforce-goal-current-month{display:grid;align-content:center;gap:4px;min-height:38px;padding:6px 10px;border:1px solid #dbece2;border-radius:8px;background:#f7fcf8;color:#64748b;font-size:10px}
+.workforce-goal-current-month strong{color:#12664f;font-size:11px}
+.workforce-goal-task-drafts{grid-column:1/-1;display:grid;gap:8px;min-width:0;margin:0;padding:10px;border:1px solid #dce8e1;border-radius:10px;background:#fff}
+.workforce-goal-task-drafts legend{padding:0 5px;color:#475569;font-size:10px;font-weight:700}
+.workforce-goal-task-drafts>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:7px}
+.workforce-goal-task-drafts input{box-sizing:border-box;width:100%;min-width:0;min-height:36px;padding:7px 9px;border:1px solid #d8e2dc;border-radius:8px;background:#fff;color:#1e293b;font:inherit;font-size:11px}
+.workforce-goal-task-drafts small{color:#64748b;font-size:9px;white-space:nowrap}
+.workforce-goal-task-drafts>div>button{width:30px;height:30px;border:1px solid #fecaca;border-radius:7px;background:#fff7f7;color:#b91c1c;font:inherit;font-size:18px;cursor:pointer}
+.workforce-goal-task-drafts>.workforce-modal-action{justify-self:start;min-height:32px}
+.workforce-goal-card-heading{grid-column:1/-1;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}
+.workforce-goal-card-heading>div{display:grid;gap:4px;min-width:0}
+.workforce-goal-card-heading>div>strong{color:#1e293b;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.workforce-goal-card-heading>div>span{color:#64748b;font-size:10px;line-height:1.7}
+.workforce-goal-progress-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px;min-width:0}
+.workforce-goal-progress-row>span{color:#64748b;font-size:10px}
+.workforce-goal-progress-row>strong{color:#334155;font-size:10px;text-align:left}
+.workforce-goal-progress-row .workforce-modal-progress{grid-column:1/-1;width:100%;height:6px}
+.workforce-goal-progress-row.task-progress{padding-top:8px;border-top:1px dashed #e2e8f0}
+.workforce-goal-task-details{grid-column:1/-1;min-width:0;border-top:1px solid #edf1f4;padding-top:8px}
+.workforce-goal-task-details>summary{color:#386b8e;font-size:10px;font-weight:700;cursor:pointer}
+.workforce-goal-task-details>ul{display:grid;gap:6px;margin:9px 0 0;padding:0;list-style:none}
+.workforce-goal-task-details li{display:grid;grid-template-columns:23px minmax(0,1fr) auto;align-items:start;gap:7px;padding:8px;border:1px solid #e8eef2;border-radius:8px;background:#f9fbfc}
+.workforce-goal-task-state{display:grid;place-items:center;width:22px;height:22px;border:1px solid #dbe5ec;border-radius:7px;color:#8193a3;font-size:12px}
+.workforce-goal-task-details li.complete .workforce-goal-task-state{border-color:#bde4d1;background:#ecf9f2;color:#16805d}
+.workforce-goal-task-details li>div{display:grid;gap:3px;min-width:0}
+.workforce-goal-task-details li>div>strong{color:#334155;font-size:10px;line-height:1.7;overflow-wrap:anywhere}
+.workforce-goal-task-details li>div>small{color:#718096;font-size:9px}
+.workforce-goal-task-details li>div>p{margin:2px 0 0;color:#526b7e;font-size:10px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+.workforce-goal-task-review{align-self:center;padding:3px 6px;border-radius:6px;background:#f1f5f9;color:#64748b;font-size:9px;white-space:nowrap}
+.workforce-goal-task-review.approved{background:#ecfdf5;color:#15803d}
+.workforce-goal-task-review.changes_requested{background:#fff7ed;color:#c2410c}
+@media(max-width:700px){.workforce-goal-task-drafts>div{grid-template-columns:minmax(0,1fr) auto}.workforce-goal-task-drafts small{grid-column:1;white-space:normal}.workforce-goal-task-drafts>div>button{grid-column:2;grid-row:1/3}.workforce-goal-card-heading{align-items:flex-start}.workforce-goal-card-heading .workforce-data-tag{max-width:125px;white-space:normal;text-align:center}.workforce-goal-task-details li{grid-template-columns:22px minmax(0,1fr)}.workforce-goal-task-review{grid-column:2;justify-self:start}}
+.workforce-modal-tabs .workforce-modal-tab-count{display:inline-grid;place-items:center;min-width:19px;height:19px;margin-inline-start:5px;padding:0 5px;border-radius:999px;background:#e9eff5;color:#64748b;font-size:9px;font-variant-numeric:tabular-nums}
+.workforce-modal-tabs button.active .workforce-modal-tab-count{background:#d7f0e4;color:#12664f}
+.workforce-modal-summary-grid .workforce-modal-goal-overview{grid-column:1/-1;padding:14px;background:linear-gradient(135deg,#fff,#f7fcf9)}
+.workforce-modal-goal-overview>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:11px}
+.workforce-modal-goal-overview>header h3{margin:0 0 4px}
+.workforce-modal-goal-overview>header p{margin:0;color:#718096;font-size:10px;line-height:1.7}
+.workforce-modal-goal-overview>header button{flex:none;padding:6px 9px;border:1px solid #cce5d8;border-radius:8px;background:#f1faf5;color:#12664f;font:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.workforce-modal-goal-overview-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.workforce-modal-goal-overview-list>article{display:grid;align-content:start;gap:8px;min-width:0;padding:10px;border:1px solid #e4eee8;border-radius:10px;background:#fff}
+.workforce-modal-goal-overview-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0}
+.workforce-modal-goal-overview-heading>strong{min-width:0;color:#1e293b;font-size:11px;line-height:1.7;overflow-wrap:anywhere}
+.workforce-modal-goal-overview-heading>span{flex:none;padding:3px 6px;border-radius:6px;background:#eff6ff;color:#356c94;font-size:9px}
+.workforce-modal-goal-overview-task{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px}
+.workforce-modal-goal-overview-task>span{color:#64748b;font-size:9px}
+.workforce-modal-goal-overview-task>b{color:#14745e;font-size:9px}
+.workforce-modal-goal-overview-task .workforce-modal-progress{grid-column:1/-1;height:5px}
+.workforce-modal-goal-overview-list>article>small{grid-column:auto;color:#64748b;font-size:9px;line-height:1.6;overflow-wrap:anywhere}
+.workforce-modal-goal-overview-list>article>small.overdue{color:#b45309;font-weight:700}
+@media(max-width:700px){.workforce-modal-goal-overview-list{grid-template-columns:1fr}.workforce-modal-summary-grid .workforce-modal-goal-overview{padding:11px}}

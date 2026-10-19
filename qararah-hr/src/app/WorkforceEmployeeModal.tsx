@@ -18,13 +18,14 @@ type Employee = {
   branch?: { name: string } | null;
   department?: { name: string } | null;
 };
-type Goal = { id: string; period_month: string; title: string; description: string | null; target_value: number | null; actual_value: number | null; target_unit: string | null; goal_revision?: number };
+type GoalTask = { id: string; goal_id: string; title: string; sort_order: number; is_completed: boolean; due_date: string | null; employee_note: string | null; review_status: string };
+type Goal = { id: string; period_month: string; title: string; description: string | null; target_value: number | null; actual_value: number | null; target_unit: string | null; goal_revision?: number; tasks?: GoalTask[] };
 type EvaluationItem = { criterion: string; score: number; max_score: number; evidence: string | null };
 type Evaluation = { id: string; period_month: string; evaluator_id: string | null; total_score: number | null; max_score: number; status: string; notes: string | null; evaluation_items?: EvaluationItem[] };
 type Report = { id: string; category: string; subject: string; message: string; status: string; hr_response: string | null; created_at: string };
 type RequestEvent = { id: string; event_type: string; effective_date: string; end_date: string | null; status: string; reason: string | null; decision_reason: string | null };
 type Attendance = { id: string; attendance_date: string; status: string; first_in: string | null; exception_note: string | null };
-type DetailData = { goals: Goal[]; evaluations: Evaluation[]; reports: Report[]; requests: RequestEvent[]; attendance: Attendance[]; errors: Record<string, boolean>; goalProgressAvailable: boolean };
+type DetailData = { goals: Goal[]; evaluations: Evaluation[]; reports: Report[]; requests: RequestEvent[]; attendance: Attendance[]; errors: Record<string, boolean>; goalProgressAvailable: boolean; goalTasksAvailable: boolean };
 
 const tabs = [
   { id: "summary", label: "ملخص" },
@@ -46,6 +47,7 @@ const date = (value: string) => toWesternDigits(new Intl.DateTimeFormat("ar-LY",
 const month = (value: string) => toWesternDigits(new Intl.DateTimeFormat("ar-LY", { month: "long", year: "numeric", timeZone: "Africa/Tripoli" }).format(new Date(`${value.slice(0, 7)}-15T12:00:00Z`)));
 const employeeName = (employee: Employee) => employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" ");
 const currentMonth = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit" }).format(new Date());
+const defaultTaskDueDate = (value: string) => { const [year, monthValue] = value.split("-").map(Number); return new Date(Date.UTC(year, monthValue, 10)).toISOString().slice(0, 10); };
 function criteriaFor(title: string) {
   if (/محاسب/.test(title)) return ["الالتزام بالحضور وإدارة الوقت وإنجاز المهام", "العمل الجماعي والتعاون وتحمل المسؤولية", "إدارة السلف ومطابقتها مع الفرع", "دقة فواتير البيع والشراء بين الفروع", "متابعة مديونيات الزبائن ورفع التقرير المالي", "إدخال إيصالات القبض والتحويلات ومراجعة المرفقات", "إتمام المطابقة الشهرية مع الإدارة المالية في موعدها", "إدارة مصروفات الفرع وإضافة مستنداتها يوميًا", "إدارة حركة الخزينة اليومية وإرفاق المستندات"];
   if (/مبيعات|مندوب/.test(title)) return ["الالتزام بالحضور وإدارة الوقت وإنجاز المهام", "تحقيق نسبة المبيعات المستهدفة خلال الشهر", "استقطاب زبائن جدد بالتسويق الخارجي", "تسويق المنتجات التي بها ركود", "متابعة الزبائن بعد البيع وعرض المنتجات الجديدة", "متابعة سداد مديونيات الزبائن", "المظهر ومهارات التواصل والتسويق والإقناع", "حل مشاكل الزبائن والمحافظة على استمرارية التعامل", "دقة الفواتير ومدخلات المنظومة", "رفع تقرير شهري باحتياجات الزبائن والسوق"];
@@ -56,16 +58,16 @@ export default function WorkforceEmployeeModal({ employee, onClose, canManage, c
   const supabase = useMemo(() => createClient(), []);
   const [activeTab, setActiveTab] = useState<Tab>("summary");
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<DetailData>({ goals: [], evaluations: [], reports: [], requests: [], attendance: [], errors: {}, goalProgressAvailable: false });
+  const [data, setData] = useState<DetailData>({ goals: [], evaluations: [], reports: [], requests: [], attendance: [], errors: {}, goalProgressAvailable: false, goalTasksAvailable: false });
   const [userId, setUserId] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
-  const [goalMonth, setGoalMonth] = useState(currentMonth);
   const [goalTarget, setGoalTarget] = useState("");
   const [goalUnit, setGoalUnit] = useState("");
+  const [goalTaskTitles, setGoalTaskTitles] = useState([""]);
   const [actualValues, setActualValues] = useState<Record<string, string>>({});
   const [evaluationMonth, setEvaluationMonth] = useState(currentMonth);
   const [evaluationNotes, setEvaluationNotes] = useState("");
@@ -88,7 +90,7 @@ export default function WorkforceEmployeeModal({ employee, onClose, canManage, c
       setLoading(true);
       const [authResult, goalResult, evaluationResult, requestResult, reportResult, attendanceResult] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from("employee_goals").select("id,period_month,title,description,target_value,actual_value,target_unit,goal_revision").is("deleted_at", null).eq("employee_id", employee.id).order("period_month", { ascending: false }),
+        supabase.from("employee_goals").select("id,period_month,title,description,target_value,actual_value,target_unit,goal_revision").is("deleted_at", null).eq("employee_id", employee.id).eq("period_month", `${currentMonth()}-01`).order("period_month", { ascending: false }),
         supabase.from("evaluations").select("id,period_month,evaluator_id,total_score,max_score,status,notes,evaluation_items(criterion,score,max_score,evidence)").eq("employee_id", employee.id).order("period_month", { ascending: false }).limit(12),
         supabase.from("hr_events").select("id,event_type,effective_date,end_date,status,reason,decision_reason").eq("employee_id", employee.id).in("event_type", ["leave", "late_permission", "permission", "mission"]).order("effective_date", { ascending: false }).limit(30),
         supabase.from("employee_reports").select("id,category,subject,message,status,hr_response,created_at").eq("employee_id", employee.id).order("created_at", { ascending: false }).limit(20),
@@ -98,21 +100,32 @@ export default function WorkforceEmployeeModal({ employee, onClose, canManage, c
       let goalFailed = Boolean(goalResult.error);
       let goalProgressAvailable = !goalResult.error;
       if (goalResult.error && /actual_value|column/i.test(goalResult.error.message)) {
-        const fallback = await supabase.from("employee_goals").select("id,period_month,title,description,target_value,target_unit,goal_revision").is("deleted_at", null).eq("employee_id", employee.id).order("period_month", { ascending: false });
+        const fallback = await supabase.from("employee_goals").select("id,period_month,title,description,target_value,target_unit,goal_revision").is("deleted_at", null).eq("employee_id", employee.id).eq("period_month", `${currentMonth()}-01`).order("period_month", { ascending: false });
         goalFailed = Boolean(fallback.error);
         goalProgressAvailable = false;
         goalRows = ((fallback.data ?? []) as Omit<Goal, "actual_value">[]).map((goal) => ({ ...goal, actual_value: null }));
       }
+      const goalIds = (goalRows ?? []).map((goal) => goal.id);
+      const goalTaskResult = goalIds.length
+        ? await supabase.from("employee_goal_tasks").select("id,goal_id,title,sort_order,is_completed,due_date,employee_note,review_status").in("goal_id", goalIds).order("sort_order")
+        : { data: [] as GoalTask[], error: null };
+      const tasksByGoal = new Map<string, GoalTask[]>();
+      for (const task of (goalTaskResult.data ?? []) as GoalTask[]) {
+        const tasks = tasksByGoal.get(task.goal_id) ?? [];
+        tasks.push(task);
+        tasksByGoal.set(task.goal_id, tasks);
+      }
       if (cancelled) return;
       setUserId(authResult.data.user?.id ?? "");
       setData({
-        goals: goalRows ?? [],
+        goals: (goalRows ?? []).map((goal) => ({ ...goal, tasks: tasksByGoal.get(goal.id) ?? [] })),
         evaluations: (evaluationResult.data ?? []) as Evaluation[],
         requests: (requestResult.data ?? []) as RequestEvent[],
         reports: (reportResult.data ?? []) as Report[],
         attendance: (attendanceResult.data ?? []) as Attendance[],
         errors: { goals: goalFailed, evaluations: Boolean(evaluationResult.error), requests: Boolean(requestResult.error), reports: Boolean(reportResult.error), attendance: Boolean(attendanceResult.error) },
         goalProgressAvailable,
+        goalTasksAvailable: !goalTaskResult.error,
       });
       setActualValues(Object.fromEntries((goalRows ?? []).map((goal) => [goal.id, goal.actual_value === null ? "" : String(goal.actual_value)])));
       const ownEvaluation = ((evaluationResult.data ?? []) as Evaluation[]).find((evaluation) => evaluation.evaluator_id === authResult.data.user?.id && evaluation.period_month.slice(0, 7) === evaluationMonth);
@@ -132,6 +145,9 @@ export default function WorkforceEmployeeModal({ employee, onClose, canManage, c
   const openReports = data.reports.filter((report) => report.status !== "resolved").length;
   const latestEvaluation = data.evaluations[0];
   const name = employeeName(employee);
+  const thisMonth = currentMonth();
+  const monthlyGoals = data.goals.filter((goal) => goal.period_month.slice(0, 7) === thisMonth).slice(0, 3);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Tripoli" });
 
   function sectionError(key: keyof DetailData["errors"], title: string) {
     if (loading) return <p className="workforce-modal-state">جارٍ تحميل {title}…</p>;
@@ -142,13 +158,19 @@ export default function WorkforceEmployeeModal({ employee, onClose, canManage, c
   async function addGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!goalTitle.trim() || !userId) return setMessage({ text: "تعذر تحديد حساب المستخدم أو بيانات الهدف.", error: true });
+    const taskTitles = goalTaskTitles.map((task) => task.trim()).filter(Boolean);
+    if (!taskTitles.length) return setMessage({ text: "أضف مهمة واحدة على الأقل للهدف.", error: true });
     setBusy(true); setMessage(null);
-    const { data: created, error } = await supabase.from("employee_goals").insert({ employee_id: employee.id, period_month: `${goalMonth}-01`, title: goalTitle.trim(), description: goalDescription.trim() || null, target_value: goalTarget ? Number(goalTarget) : null, target_unit: goalUnit.trim() || null, created_by: userId }).select("id,period_month,title,description,target_value,actual_value,target_unit,goal_revision").single();
+    const { data: created, error } = await supabase.from("employee_goals").insert({ employee_id: employee.id, period_month: `${thisMonth}-01`, title: goalTitle.trim(), description: goalDescription.trim() || null, target_value: goalTarget ? Number(goalTarget) : null, target_unit: goalUnit.trim() || null, created_by: userId }).select("id,period_month,title,description,target_value,actual_value,target_unit,goal_revision").single();
+    if (error) { setBusy(false); return setMessage({ text: `تعذر إضافة الهدف: ${error.message}`, error: true }); }
+    const dueDate = defaultTaskDueDate(thisMonth);
+    const { data: createdTasks, error: taskError } = await supabase.from("employee_goal_tasks").insert(taskTitles.map((title, sort_order) => ({ goal_id: created.id, title, sort_order, due_date: dueDate, created_by: userId }))).select("id,goal_id,title,sort_order,is_completed,due_date,employee_note,review_status");
     setBusy(false);
-    if (error) return setMessage({ text: `تعذر إضافة الهدف: ${error.message}`, error: true });
-    setData((current) => ({ ...current, goals: [created as Goal, ...current.goals].sort((a, b) => b.period_month.localeCompare(a.period_month)) }));
+    const savedGoal = { ...created, tasks: (createdTasks ?? []) as GoalTask[] } as Goal;
+    setData((current) => ({ ...current, goals: [savedGoal, ...current.goals].sort((a, b) => b.period_month.localeCompare(a.period_month)) }));
     setActualValues((current) => ({ ...current, [created.id]: "" }));
-    setGoalTitle(""); setGoalDescription(""); setGoalTarget(""); setGoalUnit(""); setShowGoalForm(false);
+    setGoalTitle(""); setGoalDescription(""); setGoalTarget(""); setGoalUnit(""); setGoalTaskTitles([""]); setShowGoalForm(false);
+    if (taskError) return setMessage({ text: `تم إنشاء الهدف لكن تعذر حفظ مهامه: ${taskError.message}`, error: true });
     setMessage({ text: "تمت إضافة الهدف للموظف." });
   }
 
@@ -210,22 +232,33 @@ export default function WorkforceEmployeeModal({ employee, onClose, canManage, c
         <button type="button" className="workforce-modal-close" onClick={onClose} aria-label="إغلاق نافذة الموظف" autoFocus>×</button>
       </header>
       <div className="workforce-modal-profile"><span>الكود <b>{toWesternDigits(employee.employee_number)}</b></span><span>القسم <b>{employee.department?.name || "—"}</b></span><span>الحالة <b>{employee.status === "active" ? "نشط" : employee.status}</b></span>{employee.hired_on && <span>تاريخ التعيين <b>{date(employee.hired_on)}</b></span>}</div>
-      <nav className="workforce-modal-tabs" aria-label="أقسام ملف الموظف">{tabs.map((tab) => <button type="button" key={tab.id} className={activeTab === tab.id ? "active" : ""} aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</nav>
+      <nav className="workforce-modal-tabs" aria-label="أقسام ملف الموظف">{tabs.map((tab) => { const count = tab.id === "goals" ? (data.errors.goals ? null : data.goals.length) : tab.id === "requests" ? (data.errors.requests ? null : pendingRequests) : tab.id === "reports" ? (data.errors.reports ? null : openReports) : null; return <button type="button" key={tab.id} className={activeTab === tab.id ? "active" : ""} aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>{tab.label}{count !== null && count !== 0 && <span className="workforce-modal-tab-count">{number(count)}</span>}</button>; })}</nav>
       {message && <p className={`workforce-modal-message${message.error ? " error" : ""}`} role="status">{message.text}</p>}
       <div className="workforce-modal-content">
         {activeTab === "summary" && <>
           <div className="workforce-modal-stats">
-            <article><span>الأهداف</span><strong>{loading ? "—" : data.errors.goals ? "—" : number(data.goals.length)}</strong></article>
+            <article><span>أهداف الشهر</span><strong>{loading ? "—" : data.errors.goals ? "—" : number(data.goals.length)}</strong></article>
             <article><span>آخر تقييم</span><strong>{loading ? "—" : latestEvaluation && latestEvaluation.max_score ? `${number((Number(latestEvaluation.total_score ?? 0) / Number(latestEvaluation.max_score)) * 100)}٪` : "—"}</strong></article>
             <article><span>تأخيرات آخر ٣٠ سجلًا</span><strong>{loading || data.errors.attendance ? "—" : number(lateCount)}</strong></article>
             <article><span>طلبات معلقة</span><strong>{loading || data.errors.requests ? "—" : number(pendingRequests)}</strong></article>
           </div>
           <div className="workforce-modal-summary-grid"><section><h3>آخر الحضور</h3>{sectionError("attendance", "سجل الحضور")}{!loading && !data.errors.attendance && (data.attendance.length ? <ul>{data.attendance.slice(0, 5).map((row) => <li key={row.id}><span>{date(row.attendance_date)}</span><b className={`workforce-data-tag ${lateMinutesAfter915(row.first_in) !== null || row.status === "late" ? "warning" : ""}`}>{lateMinutesAfter915(row.first_in) !== null || row.status === "late" ? "تأخير" : row.status === "present" ? "حضور" : row.status}</b></li>)}</ul> : <p className="workforce-modal-state">لا توجد سجلات حضور.</p>)}</section>
-            <section><h3>آخر تقييم</h3>{sectionError("evaluations", "التقييمات")}{!loading && !data.errors.evaluations && (latestEvaluation ? <div className="workforce-modal-latest"><strong>{latestEvaluation.max_score ? `${number(latestEvaluation.total_score ?? 0)} / ${number(latestEvaluation.max_score)}` : "لم تُسجل نتيجة"}</strong><span>{month(latestEvaluation.period_month)} · {latestEvaluation.status === "submitted" || latestEvaluation.status === "approved" ? "مرسل" : "مسودة"}</span></div> : <p className="workforce-modal-state">لا يوجد تقييم مسجل.</p>)}</section></div>
+            <section><h3>آخر تقييم</h3>{sectionError("evaluations", "التقييمات")}{!loading && !data.errors.evaluations && (latestEvaluation ? <div className="workforce-modal-latest"><strong>{latestEvaluation.max_score ? `${number(latestEvaluation.total_score ?? 0)} / ${number(latestEvaluation.max_score)}` : "لم تُسجل نتيجة"}</strong><span>{month(latestEvaluation.period_month)} · {latestEvaluation.status === "submitted" || latestEvaluation.status === "approved" ? "مرسل" : "مسودة"}</span></div> : <p className="workforce-modal-state">لا يوجد تقييم مسجل.</p>)}</section>
+            <section className="workforce-modal-goal-overview"><header><div><h3>أهداف الشهر</h3><p>النتيجة الفعلية والمهام تُتابع كلٌ على حدة.</p></div><button type="button" onClick={() => setActiveTab("goals")}>عرض الكل</button></header>{sectionError("goals", "الأهداف")}{!loading && !data.errors.goals && !data.goalTasksAvailable && <p className="workforce-modal-state">تعذر تحميل مهام الأهداف.</p>}{!loading && !data.errors.goals && data.goalTasksAvailable && (monthlyGoals.length ? <div className="workforce-modal-goal-overview-list">{monthlyGoals.map((goal) => { const tasks = goal.tasks ?? []; const done = tasks.filter((task) => task.is_completed).length; const taskPercent = tasks.length ? Math.round(done / tasks.length * 100) : 0; const outcomePercent = goal.target_value && goal.target_value > 0 && goal.actual_value !== null ? Math.round(Number(goal.actual_value) / Number(goal.target_value) * 100) : null; const nextTask = tasks.filter((task) => !task.is_completed).sort((a, b) => (a.due_date ?? "9999-12-31").localeCompare(b.due_date ?? "9999-12-31"))[0]; const overdue = nextTask?.due_date ? nextTask.due_date < today : false; return <article key={goal.id}><div className="workforce-modal-goal-overview-heading"><strong>{goal.title}</strong><span>{outcomePercent === null ? "النتيجة لم تُسجل" : `تحقق الهدف ${number(outcomePercent)}٪`}</span></div><div className="workforce-modal-goal-overview-task"><span>تنفيذ المهام</span><b>{number(done)} / {number(tasks.length)}</b><div className="workforce-modal-progress"><span style={{ width: `${taskPercent}%` }}/></div></div>{nextTask && <small className={overdue ? "overdue" : ""}>{overdue ? "متأخرة" : "القادمة"}: {nextTask.title}{nextTask.due_date ? ` · ${date(nextTask.due_date)}` : ""}</small>}</article>; })}</div> : <p className="workforce-modal-state">لا توجد أهداف مسجلة لهذا الشهر.</p>)}</section></div>
         </>}
-        {activeTab === "goals" && <section className="workforce-modal-section"><div className="workforce-modal-section-heading"><h3>أهداف الموظف</h3>{canManage && <button type="button" className="workforce-modal-action" onClick={() => setShowGoalForm((current) => !current)}>{showGoalForm ? "إغلاق النموذج" : "+ إضافة هدف"}</button>}</div>{sectionError("goals", "الأهداف")}{showGoalForm && canManage && <form className="workforce-goal-form" onSubmit={addGoal}><label>اسم الهدف<input required value={goalTitle} onChange={(event) => setGoalTitle(event.target.value)} placeholder="مثال: تحقيق مبيعات الشهر" /></label><label>الشهر<input required type="month" value={goalMonth} onChange={(event) => setGoalMonth(event.target.value)} /></label><label>القيمة المستهدفة<input type="number" min="0" step="0.01" value={goalTarget} onChange={(event) => setGoalTarget(event.target.value)} placeholder="اختياري" /></label><label>وحدة القياس<input value={goalUnit} onChange={(event) => setGoalUnit(event.target.value)} placeholder="د.ل، زيارة، مهمة..." /></label><label className="wide">تفاصيل الهدف<textarea rows={2} value={goalDescription} onChange={(event) => setGoalDescription(event.target.value)} /></label><button type="submit" className="workforce-modal-primary" disabled={busy}>{busy ? "جارٍ الحفظ…" : "حفظ الهدف"}</button></form>}{!loading && !data.errors.goals && (data.goals.length ? <div className="workforce-modal-record-list">{data.goals.map((goal) => {
-          const percent = goal.target_value && goal.target_value > 0 && goal.actual_value !== null ? Math.round((Number(goal.actual_value) / Number(goal.target_value)) * 100) : null;
-          return <article key={goal.id}><div><strong>{goal.title}</strong><span>{month(goal.period_month)} · المستهدف: {goal.target_value === null ? "غير محدد" : `${number(Number(goal.target_value))} ${goal.target_unit || ""}`}</span></div>{percent !== null ? <b className="workforce-data-tag approved">{number(percent)}٪</b> : <b className="workforce-data-tag pending">بانتظار التقييم</b>}{goal.target_value && <div className="workforce-modal-progress"><span style={{ width: `${Math.min(100, percent ?? 0)}%` }} /></div>}{goal.description && <p>{goal.description}</p>}{canManage && <GoalActions goal={goal} onChanged={(updated) => { setData(current=>({...current, goals: updated ? current.goals.map(row=>row.id===goal.id ? {...row,...updated} : row).sort((a,b)=>b.period_month.localeCompare(a.period_month)) : current.goals.filter(row=>row.id!==goal.id)})); setMessage({text:updated ? "تم تعديل الهدف مع الحفاظ على الإنجاز المسجل." : "تم حذف الهدف من القوائم وحفظه في سجل التدقيق."}); }} />}{canManage && data.goalProgressAvailable && <form className="workforce-goal-result-form" onSubmit={(event) => saveGoalProgress(event, goal)}><label>تقييم الإنجاز الفعلي<input type="number" min="0" step="0.01" value={actualValues[goal.id] ?? ""} onChange={(event) => setActualValues((current) => ({ ...current, [goal.id]: event.target.value }))} placeholder="أدخل القيمة المحققة" /></label><span>{goal.target_unit || "قيمة الإنجاز"}</span><button type="submit" className="workforce-modal-action" disabled={busy}>{busy ? "جارٍ الحفظ…" : "حفظ التقييم"}</button></form>}{canManage && !data.goalProgressAvailable && <small className="workforce-modal-db-note">فعّل تحديثات تقدم الأهداف في قاعدة البيانات لتسجيل الإنجاز.</small>}</article>;
+        {activeTab === "goals" && <section className="workforce-modal-section"><div className="workforce-modal-section-heading"><div><h3>أهداف {month(`${thisMonth}-01`)}</h3><small className="workforce-goal-section-note">النتيجة تقيس تحقق الهدف، والمهام تقيس خطوات التنفيذ.</small></div>{canManage && <button type="button" className="workforce-modal-action" onClick={() => setShowGoalForm((current) => !current)}>{showGoalForm ? "إغلاق النموذج" : "+ إضافة هدف"}</button>}</div>{sectionError("goals", "الأهداف")}{showGoalForm && canManage && <form className="workforce-goal-form" onSubmit={addGoal}><label>اسم الهدف<input required value={goalTitle} onChange={(event) => setGoalTitle(event.target.value)} placeholder="مثال: مطابقة الحسابات المصرفية" /></label><div className="workforce-goal-current-month">شهر الهدف<strong>{month(`${thisMonth}-01`)}</strong></div><label>القيمة المستهدفة<input type="number" min="0" step="0.01" value={goalTarget} onChange={(event) => setGoalTarget(event.target.value)} placeholder="اختياري" /></label><label>وحدة القياس<input value={goalUnit} onChange={(event) => setGoalUnit(event.target.value)} placeholder="د.ل، زيارة، حساب مطابق..." /></label><label className="wide">تفاصيل الهدف<textarea rows={2} value={goalDescription} onChange={(event) => setGoalDescription(event.target.value)} /></label><fieldset className="workforce-goal-task-drafts"><legend>مهام الهدف</legend>{goalTaskTitles.map((task, index) => <div key={index}><input aria-label={`المهمة ${index + 1}`} required={index === 0} value={task} onChange={(event) => setGoalTaskTitles((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="اكتب خطوة قابلة للتنفيذ"/><small>موعد التسليم الافتراضي: {date(defaultTaskDueDate(thisMonth))}</small>{goalTaskTitles.length > 1 && <button type="button" aria-label={`حذف المهمة ${index + 1}`} onClick={() => setGoalTaskTitles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button>}</div>)}<button type="button" className="workforce-modal-action" onClick={() => setGoalTaskTitles((current) => [...current, ""])}>＋ إضافة مهمة</button></fieldset><button type="submit" className="workforce-modal-primary" disabled={busy}>{busy ? "جارٍ الحفظ…" : "حفظ الهدف ومهامه"}</button></form>}{!loading && !data.errors.goals && (data.goals.length ? <div className="workforce-modal-record-list">{data.goals.map((goal) => {
+          const outcomePercent = goal.target_value && goal.target_value > 0 && goal.actual_value !== null ? Math.round((Number(goal.actual_value) / Number(goal.target_value)) * 100) : null;
+          const goalTasks = goal.tasks ?? [];
+          const completedTasks = goalTasks.filter((task) => task.is_completed).length;
+          const taskPercent = goalTasks.length ? Math.round((completedTasks / goalTasks.length) * 100) : null;
+          return <article key={goal.id} className="workforce-goal-card"><div className="workforce-goal-card-heading"><div><strong>{goal.title}</strong><span>{month(goal.period_month)} · المستهدف: {goal.target_value === null ? "غير محدد" : `${number(Number(goal.target_value))} ${goal.target_unit || ""}`}</span></div><b className={`workforce-data-tag ${outcomePercent !== null ? "approved" : "pending"}`}>{outcomePercent !== null ? `النتيجة ${number(outcomePercent)}٪` : "لم تسجل النتيجة"}</b></div>
+            {goal.target_value && <div className="workforce-goal-progress-row"><span>تحقق النتيجة</span><strong>{goal.actual_value === null ? "بانتظار النتيجة الفعلية" : `${number(Number(goal.actual_value))} / ${number(Number(goal.target_value))} ${goal.target_unit || ""}`}</strong><div className="workforce-modal-progress"><span style={{ width: `${Math.min(100, outcomePercent ?? 0)}%` }} /></div></div>}
+            {goalTasks.length > 0 && <div className="workforce-goal-progress-row task-progress"><span>تنفيذ المهام</span><strong>{number(completedTasks)} من {number(goalTasks.length)} · {number(taskPercent ?? 0)}٪</strong><div className="workforce-modal-progress"><span style={{ width: `${taskPercent ?? 0}%` }} /></div></div>}
+            {goal.description && <p>{goal.description}</p>}
+            {goalTasks.length > 0 && <details className="workforce-goal-task-details"><summary>عرض المهام ومواعيدها</summary><ul>{goalTasks.map((task) => <li key={task.id} className={task.is_completed ? "complete" : ""}><span className="workforce-goal-task-state" aria-hidden="true">{task.is_completed ? "✓" : "•"}</span><div><strong>{task.title}</strong>{task.due_date && <small>موعد التسليم: {date(task.due_date)}</small>}{task.employee_note && <p>ملاحظة الإنجاز: {task.employee_note}</p>}</div><small className={`workforce-goal-task-review ${task.review_status}`}>{task.review_status === "approved" ? "معتمدة" : task.review_status === "changes_requested" ? "تحتاج توضيح" : task.is_completed ? "منجزة" : "قيد التنفيذ"}</small></li>)}</ul></details>}
+            {data.goalTasksAvailable && goalTasks.length === 0 && <small className="workforce-modal-db-note">لم تُضف مهام لهذا الهدف بعد.</small>}
+            {!data.goalTasksAvailable && <small className="workforce-modal-db-note">تعذر تحميل مهام الهدف.</small>}
+            {canManage && <GoalActions goal={goal} onChanged={(updated) => { setData(current=>({...current, goals: updated ? current.goals.map(row=>row.id===goal.id ? {...row,...updated} : row).sort((a,b)=>b.period_month.localeCompare(a.period_month)) : current.goals.filter(row=>row.id!==goal.id)})); setMessage({text:updated ? "تم تعديل الهدف مع الحفاظ على الإنجاز المسجل." : "تم حذف الهدف من القوائم وحفظه في سجل التدقيق."}); }} />}{canManage && data.goalProgressAvailable && <form className="workforce-goal-result-form" onSubmit={(event) => saveGoalProgress(event, goal)}><label>النتيجة الفعلية<input type="number" min="0" step="0.01" value={actualValues[goal.id] ?? ""} onChange={(event) => setActualValues((current) => ({ ...current, [goal.id]: event.target.value }))} placeholder="أدخل القيمة المحققة" /></label><span>{goal.target_unit || "قيمة الإنجاز"}</span><button type="submit" className="workforce-modal-action" disabled={busy}>{busy ? "جارٍ الحفظ…" : "حفظ النتيجة"}</button></form>}{canManage && !data.goalProgressAvailable && <small className="workforce-modal-db-note">فعّل تحديثات تقدم الأهداف في قاعدة البيانات لتسجيل الإنجاز.</small>}</article>;
         })}</div> : <p className="workforce-modal-state">لا توجد أهداف مسجلة.</p>)}</section>}
         {activeTab === "evaluations" && <section className="workforce-modal-section"><div className="workforce-modal-section-heading"><h3>التقييمات</h3></div>{sectionError("evaluations", "التقييمات")}{!loading && !data.errors.evaluations && <>
           {(canManage || canAuditEvaluate) && <form className="workforce-evaluation-form" onSubmit={saveEmployeeEvaluation}><div className="workforce-evaluation-form-heading"><div><strong>تقييم الموظف</strong><span>قيّم كل معيار من ١ إلى ٤</span></div><label>الشهر<input type="month" required value={evaluationMonth} onChange={(event) => setEvaluationMonth(event.target.value)} /></label></div><div className="workforce-evaluation-criteria">{criteria.map((criterion, index) => <label key={criterion}><span>{number(index + 1)}. {criterion}</span><select value={evaluationScores[criterion] ?? 3} onChange={(event) => setEvaluationScores((current) => ({ ...current, [criterion]: Number(event.target.value) }))}><option value={4}>٤ · ممتاز</option><option value={3}>٣ · جيد</option><option value={2}>٢ · متوسط</option><option value={1}>١ · ضعيف</option></select><input aria-label={`شاهد أو ملاحظة ${criterion}`} value={evaluationEvidence[criterion] ?? ""} onChange={(event) => setEvaluationEvidence((current) => ({ ...current, [criterion]: event.target.value }))} placeholder="شاهد اختياري" /></label>)}</div><label className="workforce-evaluation-notes">ملاحظات عامة<textarea rows={2} value={evaluationNotes} onChange={(event) => setEvaluationNotes(event.target.value)} placeholder="ملاحظات تدعم التقييم" /></label><button type="submit" className="workforce-modal-primary" disabled={busy}>{busy ? "جارٍ حفظ التقييم…" : "حفظ تقييم الموظف"}</button></form>}

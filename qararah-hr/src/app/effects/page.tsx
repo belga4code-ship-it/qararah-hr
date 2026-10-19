@@ -38,7 +38,7 @@ export default async function EffectsPage() {
 
   let employeesQuery = supabase
     .from("employees")
-    .select("id,employee_number,first_name,last_name,full_name,status,branch_id,manager_id,job_title:job_titles(name),department:departments(name),branch:branches(name)")
+    .select("id,employee_number,first_name,last_name,full_name,phone,status,branch_id,manager_id,job_title:job_titles(name),department:departments(name),branch:branches(name)")
     .order("employee_number");
   if (hasRole("branch_manager", "yard_supervisor") && !hasRole("admin", "hr", "auditor") && !extraPermissions.includes("employees.view_all")) employeesQuery = employeesQuery.eq("branch_id", profile.branch_id ?? "00000000-0000-0000-0000-000000000000");
 
@@ -67,7 +67,7 @@ export default async function EffectsPage() {
   const { data: printProfiles } = printProfileIds.length ? await supabase.from("profiles").select("id,full_name").in("id", printProfileIds) : { data: [] };
   const approvalNames = Object.fromEntries((printProfiles ?? []).map((row) => [row.id, row.full_name || "مسؤول غير مسمى"]));
   const privateEmployees = new Map((privateData ?? []).map((row) => [row.employee_id, row]));
-  const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: privateEmployees.get(employee.id)?.salary_amount ?? null, phone: privateEmployees.get(employee.id)?.phone ?? null }));
+  const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: privateEmployees.get(employee.id)?.salary_amount ?? null, phone: privateEmployees.get(employee.id)?.phone ?? employee.phone ?? null }));
 
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
