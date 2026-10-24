@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "prod:lan": "next build && next start -H 0.0.0.0",
     "lint": "eslint",
     "test:approvals": "node scripts/test-individual-approvals.mjs",
     "test:goals": "node scripts/test-goal-corrections.mjs"

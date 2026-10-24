@@ -63,7 +63,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
 
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف مقيّم";
-  return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="تقييم الأداء">
+  return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="تقييم الأداء" initialAccessProfile={profile}>
     <main className="evaluations-page page-content evaluations-redesigned-page" dir="rtl">
       <EvaluationsWorkspace
         role={profile.role as "admin" | "hr" | "branch_manager" | "accountant" | "employee" | "auditor"}

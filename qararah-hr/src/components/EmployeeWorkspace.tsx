@@ -8,10 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 const navigation = [
   { label: "الرئيسية", href: "/", icon: "⌂", breadcrumb: "الرئيسية" },
   { label: "الموظفون", href: "/employees", icon: "♙", breadcrumb: "الموظفون" },
-  { label: "استيراد الموظفين", href: "/employees/import", icon: "⇧", breadcrumb: "استيراد الموظفين" },
   { label: "الحضور والانصراف", href: "/attendance", icon: "◷", breadcrumb: "الحضور والانصراف" },
-  { label: "استيراد الحضور", href: "/attendance/import", icon: "⇧", breadcrumb: "استيراد الحضور" },
-  { label: "المؤثرات الأسبوعية", href: "/effects", icon: "▤", breadcrumb: "المؤثرات الأسبوعية" },
+  { label: "الطلبات والقرارات", href: "/effects", icon: "▤", breadcrumb: "الطلبات والقرارات" },
   { label: "أهدافي", href: "/goals", icon: "◎", breadcrumb: "أهدافي" },
   { label: "الإجازات والمأموريات", icon: "▣" },
   { label: "تقييم الأداء", href: "/evaluations", icon: "☆", breadcrumb: "تقييم الأداء" },
@@ -24,16 +22,18 @@ const navigation = [
 const roleNames: Record<string, string> = { admin: "مدير النظام", hr: "مدير الموارد البشرية", branch_manager: "مدير الفرع", accountant: "محاسب", auditor: "مراجع الحسابات", employee: "موظف", yard_supervisor: "مسؤول ساحة" };
 type AccessProfile = { role?: string; user_roles?: string[] | null; additional_permissions?: string[] | null };
 
-export default async function EmployeeWorkspace({ children, userName, email, roleLabel, breadcrumb }: { children: ReactNode; userName: string; email: string; roleLabel: string; breadcrumb: string }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  let accessProfile: AccessProfile | null = null;
-  if (user) {
-    const extendedProfile = await supabase.from("profiles").select("role,user_roles,additional_permissions").eq("id", user.id).maybeSingle();
-    if (extendedProfile.data) accessProfile = extendedProfile.data as unknown as AccessProfile;
-    else if (extendedProfile.error && /user_roles|additional_permissions/i.test(extendedProfile.error.message)) {
-      const legacyProfile = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-      accessProfile = legacyProfile.data as unknown as AccessProfile;
+export default async function EmployeeWorkspace({ children, userName, email, roleLabel, breadcrumb, initialAccessProfile }: { children: ReactNode; userName: string; email: string; roleLabel: string; breadcrumb: string; initialAccessProfile?: AccessProfile | null }) {
+  let accessProfile: AccessProfile | null = initialAccessProfile ?? null;
+  if (!initialAccessProfile) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const extendedProfile = await supabase.from("profiles").select("role,user_roles,additional_permissions").eq("id", user.id).maybeSingle();
+      if (extendedProfile.data) accessProfile = extendedProfile.data as unknown as AccessProfile;
+      else if (extendedProfile.error && /user_roles|additional_permissions/i.test(extendedProfile.error.message)) {
+        const legacyProfile = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+        accessProfile = legacyProfile.data as unknown as AccessProfile;
+      }
     }
   }
   const roles = [...new Set([roleLabel, accessProfile?.role, ...((accessProfile?.user_roles as string[] | null) ?? [])].filter((role): role is string => Boolean(role)))];
@@ -43,7 +43,7 @@ export default async function EmployeeWorkspace({ children, userName, email, rol
   const isBasicEmployee = hasRole("employee") && !hasRole("admin", "hr", "branch_manager", "accountant", "auditor", "yard_supervisor");
   const canSee = (href: string) => {
     if (href === "/") return true;
-    if (href === "/employees" || href === "/employees/import") return hasRole("admin", "hr", "branch_manager", "auditor") || hasPermission("employees.view_all", "employees.edit", "employees.manage_accounts");
+    if (href === "/employees") return hasRole("admin", "hr", "branch_manager", "auditor") || hasPermission("employees.view_all", "employees.edit", "employees.manage_accounts");
     if (href === "/attendance/import") return hasRole("admin", "hr") || hasPermission("attendance.import");
     if (href === "/attendance") return hasRole("admin", "hr", "branch_manager", "accountant", "auditor", "yard_supervisor") || hasPermission("attendance.view_all", "attendance.manage", "attendance.import");
     if (href === "/effects") return true;

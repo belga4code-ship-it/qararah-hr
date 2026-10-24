@@ -73,10 +73,10 @@ export default async function EffectsPage() {
   const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
 
   return (
-    <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="المؤثرات الأسبوعية">
+    <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الطلبات والقرارات" initialAccessProfile={profile}>
       <main className="effects-page page-content" dir="rtl">
         <section className="effects-welcome">
-          <div><p className="eyebrow">طلبات العاملين وإجراءات الفروع</p><h1>المؤثرات الأسبوعية</h1><p className="welcome-copy">قدّم الطلب، راجعه حسب صلاحيتك، وسجّل القرار والسبب في سجل الموظف.</p></div>
+          <div><p className="eyebrow">متابعة الطلبات وإجراءات الفروع</p><h1>الطلبات والقرارات</h1><p className="welcome-copy">قدّم الطلب، راجعه حسب صلاحيتك، وسجّل القرار والسبب في سجل الموظف.</p></div>
           {branchData?.name && <span className="effects-branch">{branchData.name}</span>}
         </section>
         <EffectsWorkspace

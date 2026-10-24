@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import EmployeeWorkspace from "@/components/EmployeeWorkspace";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccessProfile } from "@/lib/supabase/profile";
 import { toWesternDigits } from "@/lib/digits";
 
 export const instant = false;
@@ -11,12 +12,12 @@ export default async function MyEvaluationsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: profile } = await supabase.from("profiles").select("full_name,role,employee_id").eq("id", user.id).maybeSingle();
+  const { data: profile } = await loadAccessProfile<{ full_name: string | null; role: string; employee_id: string | null }>(supabase, user.id, "full_name,role,employee_id,user_roles,additional_permissions", "full_name,role,employee_id");
   if (!profile) redirect("/setup-required");
   const { data } = profile.employee_id ? await supabase.from("evaluations").select("id,period_month,total_score,max_score,status,notes,evaluation_items(criterion,score,max_score,evidence)").eq("employee_id", profile.employee_id).eq("status", "submitted").order("period_month", { ascending: false }) : { data: [] };
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
-  return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="تقييماتي">
+  return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="تقييماتي" initialAccessProfile={profile}>
     <main className="employee-app-page" dir="rtl"><section className="employee-app-welcome"><span>تقييم الأداء</span><h1>تقييماتي</h1><p>نتائج التقييمات الشهرية المسجلة على ملفك.</p></section>
       {data?.length ? <div className="employee-app-content">{data.map((evaluation) => {
         const month = new Intl.DateTimeFormat("ar-LY", { month: "long", year: "numeric", timeZone: "Africa/Tripoli" }).format(new Date(`${evaluation.period_month}T12:00:00`));

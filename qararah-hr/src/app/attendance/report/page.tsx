@@ -25,7 +25,7 @@ export default async function AttendanceReportPage() {
   const canExportReport = isHR || isAuditor || isBranchManager || permissions.includes("reports.export");
   const roleLabel = roles.includes("admin") ? "مدير النظام" : roles.includes("hr") ? "مدير الموارد البشرية" : isBranchManager ? "مدير الفرع" : roles.includes("auditor") ? "مراجع حسابات" : "مصرح بالتقارير";
   const { data: branch } = isBranchManager && profile.branch_id ? await supabase.from("branches").select("name").eq("id", profile.branch_id).maybeSingle() : { data: null };
-  return <EmployeeWorkspace userName={profile.full_name || user.email || "مستخدم النظام"} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="التقرير الأسبوعي">
+  return <EmployeeWorkspace userName={profile.full_name || user.email || "مستخدم النظام"} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="التقرير الأسبوعي" initialAccessProfile={profile}>
     <main className="attendance-page page-content" dir="rtl">
       <section className="attendance-welcome"><div><p className="eyebrow">تقارير الحضور والانصراف</p><h1>التقرير الأسبوعي</h1><p className="welcome-copy">{isBranchManager ? "جهّز تقرير الحضور لموظفي فرعك فقط." : "جهّز تقرير الإدارة حسب الفترة والدوام المعتمد لكل فرع."}</p></div><Link className="secondary-button" href="/attendance">العودة للحضور</Link></section>
       <WeeklyAttendanceReport canExport={canExportReport} branchName={isBranchManager ? branch?.name ?? null : null} />

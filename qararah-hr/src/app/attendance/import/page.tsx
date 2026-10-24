@@ -20,7 +20,7 @@ export default async function AttendanceImportPage() {
   const roleLabel = profile.role === "admin" ? "مدير النظام" : profile.role === "hr" ? "مدير الموارد البشرية" : "مدير الفرع";
 
   return (
-    <EmployeeWorkspace userName={userName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="استيراد الحضور">
+    <EmployeeWorkspace userName={userName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="استيراد الحضور" initialAccessProfile={{ role: profile.role }}>
       <main className="attendance-page attendance-import-page page-content" dir="rtl">
         <section className="attendance-welcome">
           <div><p className="eyebrow">إضافة سجلات الدوام</p><h1>استيراد الحضور والانصراف</h1><p className="welcome-copy">ارفع تقرير ZKT الأسبوعي لمطابقة أكواد البصمة ومراجعة السجلات قبل حفظها.</p></div>

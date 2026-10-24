@@ -25,6 +25,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   const isHR = hasRole("admin", "hr");
   const isBranchManager = hasRole("branch_manager");
   const canExportAttendanceReport = isHR || isBranchManager || permissions.includes("reports.export");
+  const canImportAttendance = isHR || permissions.includes("attendance.import");
   const isAuditor = hasRole("auditor");
   const canViewAttendance = isHR || isAuditor || hasRole("branch_manager", "accountant", "yard_supervisor") || permissions.some((permission) => ["attendance.view_all", "attendance.manage", "attendance.import", "reports.view_all", "reports.export"].includes(permission));
   if (!canViewAttendance) redirect("/");
@@ -61,11 +62,11 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
   const branchCount = new Set(attendance.map((row) => row.employee?.branch?.name).filter(Boolean)).size;
 
   return (
-    <EmployeeWorkspace userName={userName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الحضور والانصراف">
+    <EmployeeWorkspace userName={userName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الحضور والانصراف" initialAccessProfile={profile}>
       <main className="attendance-page page-content" dir="rtl">
         <section className="attendance-welcome">
           <div><p className="eyebrow">متابعة الدوام</p><h1>الحضور والانصراف</h1><p className="welcome-copy">الفترة المحددة: {periodSummary} · سجلات الحضور والانصراف المستوردة.</p></div>
-          <div className="attendance-page-actions">{canExportAttendanceReport && <AttendancePunchExport from={rangeStart} to={rangeEnd} />}<MonthlyTardinessExport month={selectedMonth} canExport={canExportReports} />{(isHR || isAuditor || isBranchManager || permissions.includes("reports.view_all") || permissions.includes("reports.export")) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{isHR && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
+          <div className="attendance-page-actions">{canExportAttendanceReport && <AttendancePunchExport from={rangeStart} to={rangeEnd} />}<MonthlyTardinessExport month={selectedMonth} canExport={canExportReports} />{(isHR || isAuditor || isBranchManager || permissions.includes("reports.view_all") || permissions.includes("reports.export")) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{canImportAttendance && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
         </section>
 
         <div className="attendance-stats">

@@ -96,7 +96,9 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
 
   function currentRequestStep(eventId: string) {
     const pending = approvalSteps.filter((step) => step.event_id === eventId && step.status === "pending").sort((a, b) => a.step_order - b.step_order);
-    return hasRole("admin") ? pending[0] ?? null : pending.find((step) => step.approver_profile_id === userId) ?? null;
+    return hasRole("admin") ? pending[0] ?? null : pending.find((step) =>
+      step.approver_profile_id === userId || (step.approver_profile_ids ?? []).includes(userId)
+    ) ?? null;
   }
   function approverLabel(step: ApprovalStep) {
     return step.approver_role === "assigned_manager" ? (approvalNames[step.approver_profile_id ?? ""] || `المسؤول ${step.step_order}`) : step.approver_role === "branch_manager" ? "مدير الفرع" : step.approver_role === "auditor" ? "مراجع الحسابات" : "الموارد البشرية";
@@ -267,7 +269,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
       <article><span>سجلات الفترة</span><strong>{toWesternDigits(events.length)}</strong></article>
       <article><span>الموظفون المتاحون للإجراء</span><strong>{toWesternDigits(activeEmployees.length)}</strong></article>
     </div>
-    <div className="effects-workspace-tabs" role="tablist" aria-label="أقسام المؤثرات الأسبوعية">
+    <div className="effects-workspace-tabs" role="tablist" aria-label="أقسام الطلبات والقرارات">
       <button type="button" role="tab" aria-selected={activeTab === "work"} className={activeTab === "work" ? "active" : ""} onClick={() => setActiveTab("work")}><span aria-hidden="true">◷</span>الشغل<span className="effects-tab-count">{toWesternDigits(pendingCount)}</span></button>
       <button type="button" role="tab" aria-selected={activeTab === "reports"} className={activeTab === "reports" ? "active" : ""} onClick={() => setActiveTab("reports")}><span aria-hidden="true">▦</span>التقارير</button>
     </div>
@@ -347,11 +349,13 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
         const waNumber = phone ? whatsappNumber(phone) : "";
         const messageText = `السلام عليكم ${person}، إشعار بخصوص ${eventLabels[item.event_type] ?? item.event_type}. الحالة: ${statusLabels[item.status]}.${item.amount != null ? ` المبلغ: ${toWesternDigits(Number(item.amount).toFixed(2))} د.ل.` : ""} تاريخ الإجراء: ${toWesternDigits(item.effective_date)}.${item.end_date ? ` إلى ${toWesternDigits(item.end_date)}.` : ""}${time ? ` الوقت: ${toWesternDigits(time)}.` : ""} التفاصيل: ${item.decision_reason || item.reason || "يرجى التواصل مع الإدارة."} شركة قرارة للرخام والجرانيت.`;
         const whatsappHref = waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(messageText)}` : "";
+        const waitingDays = item.status === "pending" ? Math.max(0, Math.floor((Date.now() - new Date(item.created_at).getTime()) / 86_400_000)) : 0;
+        const waitingLabel = waitingDays === 0 ? "معلّق اليوم" : waitingDays === 1 ? "معلّق منذ يوم" : `معلّق منذ ${toWesternDigits(waitingDays)} أيام`;
         const leaveDailyRate = Number.isFinite(employeeSalary) ? employeeSalary / 30 : null;
         const leaveDiscountPreview = leaveDiscount === "fixed" ? Number(leaveDiscountValues[item.id]) : leaveDiscount === "days" ? (leaveDailyRate ?? 0) * Number(leaveDiscountValues[item.id]) : leaveDiscount === "half_day" ? (leaveDailyRate ?? 0) * 0.5 : leaveDiscount === "quarter_day" ? (leaveDailyRate ?? 0) * 0.25 : 0;
         return <article className="effects-event-card" key={item.id}>
           <div className="effects-event-top"><div><span className="effects-event-type">{eventLabels[item.event_type] ?? item.event_type}</span><h3>{person}<small> · {toWesternDigits(item.employee?.employee_number ?? "—")}</small></h3></div><span className={`effects-status ${item.status}`}>{statusLabels[item.status]}</span></div>
-          <div className="effects-event-meta"><span>التاريخ: {toWesternDigits(item.effective_date)}{item.end_date ? ` – ${toWesternDigits(item.end_date)}` : ""}</span>{time && <span>الوقت: {toWesternDigits(time)}</span>}{item.amount != null && <strong>المبلغ: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</strong>}{item.employee?.branch?.name && <span>{item.employee.branch.name}</span>}</div>
+          <div className="effects-event-meta"><span>التاريخ: {toWesternDigits(item.effective_date)}{item.end_date ? ` – ${toWesternDigits(item.end_date)}` : ""}</span>{item.status === "pending" && <span className={`effects-waiting-age${waitingDays >= 3 ? " overdue" : ""}`}>{waitingLabel}</span>}{time && <span>الوقت: {toWesternDigits(time)}</span>}{item.amount != null && <strong>المبلغ: {toWesternDigits(Number(item.amount).toFixed(2))} د.ل</strong>}{item.employee?.branch?.name && <span>{item.employee.branch.name}</span>}</div>
           {(["leave", "permission", "late_permission"] as const).includes(item.event_type as "leave" | "permission" | "late_permission") && <EffectRequestPrintButton kind={item.event_type as "leave" | "permission" | "late_permission"} employeeName={person} employeeNumber={toWesternDigits(item.employee?.employee_number ?? "—")} submittedBy={requesterName || "غير مسجل"} submitterRole={requesterName ? requesterRole : "غير محددة"} startDate={toWesternDigits(item.effective_date)} endDate={item.end_date ? toWesternDigits(item.end_date) : null} requestedTime={time ? toWesternDigits(time) : null} reason={item.reason ?? ""} deductionAmount={item.amount} deductionUnit={item.amount_unit} requestId={item.id} requestStatus={item.status} responsibleIds={assignedProfiles.length ? assignedProfiles : typeof item.details?.responsible_profile_id === "string" ? [item.details.responsible_profile_id] : []} adminOverride={Boolean(item.details?.admin_override)} approvalSteps={leaveSteps} approvalNames={approvalNames} decisionBy={item.decision_by || item.approved_by || null} decisionAt={item.decision_at || item.approved_at || null} decisionReason={item.decision_reason} />}
           {item.event_type === "deduction" && <p className="effects-requester"><b>مقدّم طلب الخصم:</b> {requesterName ? <>{requesterName} <span>({requesterRole})</span></> : "بيانات مقدّم الطلب غير متوفرة في السجل"}</p>}
           {isEmployeeRequest && <div className="effects-approval-flow" aria-label="موافقات المسؤولين">{leaveSteps.length ? leaveSteps.map((step) => <div key={step.id} className={`effects-approval-step ${step.status}${activeLeaveStep?.id === step.id ? " current" : ""}`}><span>{approverLabel(step)}</span><strong>{step.status === "approved" ? "تمت الموافقة" : step.status === "rejected" ? "مرفوض" : step.status === "skipped" ? "لم يعتمد — تم تجاوز المرحلة" : "بانتظار الموافقة"}</strong></div>) : <div className="effects-approval-step pending"><span>مسار الموافقات</span><strong>{approvalWorkflowAvailable ? "بانتظار التهيئة" : "يتطلب تحديث قاعدة البيانات"}</strong></div>}</div>}

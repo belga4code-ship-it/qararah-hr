@@ -592,6 +592,29 @@ thead{background:#f7f3e9}th{color:#807964}td{border-color:#f0ecdf;color:#625e53}
 }
 @media(prefers-reduced-motion:reduce){.mobile-workspace-nav-item,.mobile-nav-sheet,.workforce-employee-list{animation:none!important;transition:none!important}}
 
+/* Shared mobile usability: prevent input zoom, add comfortable touch targets, and contain horizontal scrolling. */
+@media(max-width:700px){
+  .employee-shell .employee-workspace{padding-bottom:0}
+  .employee-workspace .page-content{min-width:0;overflow-x:clip;padding-bottom:calc(98px + env(safe-area-inset-bottom))}
+  .employee-workspace .page-content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea){font-size:16px!important;scroll-margin-block:80px}
+  .employee-workspace .page-content :is(button,.primary-button,.secondary-button,.select-button,.view-all,.employee-open-link){min-height:42px}
+  .employee-workspace .page-content :is(button,.primary-button,.secondary-button,.select-button,.view-all,.employee-open-link):focus-visible,.mobile-workspace-nav-item:focus-visible,.mobile-nav-more-list a:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+  .employee-workspace .page-content .panel-heading{flex-wrap:wrap}
+  .employee-workspace .page-content .panel-heading>div{min-width:0}
+  .employee-workspace .page-content .panel-heading>:last-child{max-width:100%}
+  .employee-workspace .page-content :is(.table-wrap,.employees-table-wrap,.goals-table-wrap,.goals-report-table-wrap){overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+  .employee-workspace .page-content :is(.employee-search,.audit-search,.evaluations-search){min-width:0}
+  .employee-workspace .page-content :is(.employee-tools,.audit-filters,.evaluations-toolbar,.attendance-page-actions){gap:8px}
+  .mobile-workspace-nav{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+  .mobile-nav-backdrop{padding-bottom:calc(82px + env(safe-area-inset-bottom))}
+}
+@media(max-width:380px){
+  .employee-workspace .page-content{padding-inline:9px}
+  .employee-workspace .page-content>.welcome-row{padding-inline:11px}
+  .mobile-workspace-nav{gap:1px;padding-inline:4px}
+  .mobile-workspace-nav-item small{font-size:8px}
+}
+
 .effects-report-panel{padding:21px 22px;border-color:#dce7f2;border-radius:16px;background:linear-gradient(155deg,#fff 0%,#f8fbff 100%);box-shadow:0 7px 20px #20354d08}
 .effects-report-panel .effects-panel-heading{align-items:flex-start}
 .effects-report-eyebrow{display:inline-flex;margin-bottom:5px;color:#3473b9;font-size:10px;font-weight:750}
@@ -735,3 +758,19 @@ thead{background:#f7f3e9}th{color:#807964}td{border-color:#f0ecdf;color:#625e53}
 .workforce-modal-goal-overview-list>article>small{grid-column:auto;color:#64748b;font-size:9px;line-height:1.6;overflow-wrap:anywhere}
 .workforce-modal-goal-overview-list>article>small.overdue{color:#b45309;font-weight:700}
 @media(max-width:700px){.workforce-modal-goal-overview-list{grid-template-columns:1fr}.workforce-modal-summary-grid .workforce-modal-goal-overview{padding:11px}}
+.manager-priority-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin-bottom:18px}
+.manager-priority-card{min-width:0;padding:17px 18px;background:linear-gradient(145deg,#fff 25%,#f7fbff);border:1px solid #dce8f2;border-radius:13px;box-shadow:0 5px 18px #183b5a08}
+.manager-requests-card{border-top:3px solid #d4a33a}.manager-evaluations-card{border-top:3px solid #258d7b}
+.manager-priority-heading,.manager-priority-heading>div{display:flex;align-items:center;gap:10px}.manager-priority-heading{justify-content:space-between}
+.manager-priority-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:11px;background:#fbf4e5;color:#a87919;font-size:19px}.manager-evaluations-card .manager-priority-icon{background:#e9f5f1;color:#17836d}
+.manager-priority-heading h2{margin:0;font-size:14px}.manager-priority-heading p{margin:5px 0 0;color:#84918e;font-size:10px}.manager-priority-heading>strong{min-width:37px;height:37px;display:grid;place-items:center;border-radius:12px;background:#f1f5f8;color:#263d55;font-size:18px}
+.manager-priority-list{list-style:none;margin:13px 0 0;padding:0;display:grid;gap:7px}.manager-priority-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 10px;border:1px solid #e8eef2;background:#fff;border-radius:9px}.manager-priority-list li>span{min-width:0;display:grid;gap:4px}.manager-priority-list b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.manager-priority-list small{font-size:9px;color:#87938f}.manager-priority-list a,.manager-priority-footer{color:#247b6b;font-size:10px;font-weight:700;white-space:nowrap}.manager-priority-list a{padding:7px 9px;border-radius:7px;background:#edf7f4}.manager-priority-empty{margin:14px 0 0;padding:12px 10px;border-radius:9px;background:#fff;color:#788682;font-size:11px}.manager-priority-footer{display:flex;justify-content:space-between;margin-top:11px;padding-top:10px;border-top:1px solid #e8eef2}
+@media(max-width:650px){.manager-priority-grid{grid-template-columns:1fr;gap:10px;margin-bottom:13px}.manager-priority-card{padding:14px 13px;border-radius:13px}.manager-priority-heading h2{font-size:13px}.manager-priority-list li{padding:9px}.manager-priority-list b{font-size:11px}}
+.management-priority-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 17px}
+.management-priority-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:10px;min-width:0;padding:13px 14px;border:1px solid #dce6ef;border-radius:12px;background:#fff;color:inherit;text-decoration:none;box-shadow:0 4px 14px #1b3b5a08;transition:transform .16s ease,border-color .16s ease}
+.management-priority-card:hover{transform:translateY(-2px);border-color:#b8cede}.management-priority-icon{display:grid;place-items:center;width:35px;height:35px;border-radius:10px;font-size:17px}.management-priority-icon.amber{background:#fff6e7;color:#a7791d}.management-priority-icon.rose{background:#fff0ed;color:#b95849}.management-priority-icon.blue{background:#edf5fc;color:#3579b7}.management-priority-card>span:nth-child(2){display:grid;gap:4px;min-width:0}.management-priority-card b{font-size:11px}.management-priority-card small{font-size:9px;color:#82908d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.management-priority-card>strong{font-size:19px;color:#213c55}.management-priority-card>i{font-style:normal;color:#87958f}
+@media(max-width:700px){.management-priority-grid{grid-template-columns:1fr;gap:8px;margin-bottom:13px}.management-priority-card{padding:11px 12px}.management-priority-card>strong{font-size:18px}}
+.goal-reminders-panel{margin:0 0 17px;padding:15px 17px;border:1px solid #dbe7ef;border-radius:13px;background:linear-gradient(120deg,#fff 20%,#f6fafe)}.goal-reminders-heading,.goal-reminders-heading>div{display:flex;align-items:center;gap:10px}.goal-reminders-heading{justify-content:space-between}.goal-reminders-heading>div>span:last-child{display:grid;gap:4px}.goal-reminders-heading h2{margin:0;font-size:13px}.goal-reminders-heading small{color:#82908d;font-size:10px}.goal-reminders-heading>a{color:#287a6b;font-size:10px;font-weight:700;text-decoration:none}.goal-reminders-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#fff3dd;color:#a87919;font-size:18px}.goal-reminders-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:7px;margin-top:12px}.goal-reminders-list article{display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0;padding:9px 10px;border:1px solid #e5ebef;border-radius:9px;background:#fff}.goal-reminders-list article>span{display:grid;min-width:0;gap:4px}.goal-reminders-list b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.goal-reminders-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#83908d;font-size:9px}.goal-reminders-list article>strong{flex:none;color:#a7791d;font-size:9px}.goal-reminders-list article.overdue{border-color:#f0d4cf;background:#fff9f8}.goal-reminders-list article.overdue>strong{color:#ad4e44}
+@media(max-width:650px){.goal-reminders-panel{padding:13px 12px}.goal-reminders-heading{align-items:flex-start}.goal-reminders-heading>a{font-size:9px}.goal-reminders-list{grid-template-columns:1fr}}
+
+.effects-event-meta .effects-waiting-age{border-color:#f2e3c7;background:#fff9ed;color:#89621e;font-weight:700}.effects-event-meta .effects-waiting-age.overdue{border-color:#f3ceca;background:#fff3f2;color:#a63e37}

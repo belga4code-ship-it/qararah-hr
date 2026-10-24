@@ -24,7 +24,7 @@ export default async function ReportPage() {
   ]);
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = roles.includes("admin") ? "مدير النظام" : roles.includes("hr") ? "مدير الموارد البشرية" : isBranchManager ? "مدير الفرع" : "موظف";
-  return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الإبلاغ">
+  return <EmployeeWorkspace userName={name} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الإبلاغ" initialAccessProfile={profile}>
     <main className="employee-app-page" dir="rtl"><section className="employee-app-welcome"><span>{isHR ? "الموارد البشرية" : isBranchManager ? "متابعة الفرع" : "تواصل معنا"}</span><h1>{isHR ? "إبلاغات الموظفين" : isBranchManager ? "بلاغات الفرع" : "الإبلاغ"}</h1><p>{isHR ? "استقبل إبلاغات الموظفين وتابع الرد والمعالجة." : isBranchManager ? "اطّلع على بلاغات فرعك وأرسل بلاغًا نيابةً عن أحد موظفيه." : "أرسل مشكلة أو ملاحظة للموارد البشرية وتابع حالتها."}</p></section>
       <ReportWorkspace isHR={isHR} isBranchManager={isBranchManager} branchEmployees={(employeeData ?? []) as { id: string; full_name: string | null; first_name: string; last_name: string | null; employee_number: string }[]} employeeId={profile.employee_id} branchId={profile.branch_id} userId={user.id} reports={(reportData ?? []) as unknown as EmployeeReport[]} />
     </main>

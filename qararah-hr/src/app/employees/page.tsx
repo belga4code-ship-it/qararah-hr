@@ -30,7 +30,7 @@ export default async function EmployeesPage() {
   const displayName = profile.full_name || user.email || "مستخدم النظام";
 
   return (
-    <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الموظفون">
+    <EmployeeWorkspace userName={displayName} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="الموظفون" initialAccessProfile={profile}>
       <div className="employees-page">
       <div className="page-content">
         <div className="welcome-row"><div><p className="eyebrow">إدارة ملفات العاملين</p><h1>الموظفون</h1><p className="welcome-copy">بيانات واضحة وسهلة القراءة لكل الموظفين المسجلين.</p></div>{canEdit && <Link className="primary-button" href="/employees/import"><span>⇧</span> استيراد موظفين</Link>}</div>

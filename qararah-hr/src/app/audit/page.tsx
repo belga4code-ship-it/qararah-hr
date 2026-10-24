@@ -17,5 +17,5 @@ export default async function AuditPage() {
   const rows = (data ?? []) as unknown as AuditRow[];
   const roleLabel = profile.role === "admin" ? "مدير النظام" : "مدير الموارد البشرية";
 
-  return <EmployeeWorkspace userName={profile.full_name || user.email || "مستخدم النظام"} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="سجل التدقيق"><main className="audit-page page-content" dir="rtl"><section className="audit-welcome"><div><p className="eyebrow">متابعة التغييرات</p><h1>سجل التدقيق</h1><p className="welcome-copy">من عدّل بيانات الموظفين والحضور والطلبات والتقييمات، ومتى تم التعديل.</p></div><span className="audit-count">آخر {rows.length} حركة</span></section><AuditLog rows={rows} /></main></EmployeeWorkspace>;
+  return <EmployeeWorkspace userName={profile.full_name || user.email || "مستخدم النظام"} email={user.email ?? ""} roleLabel={roleLabel} breadcrumb="سجل التدقيق" initialAccessProfile={{ role: profile.role }}><main className="audit-page page-content" dir="rtl"><section className="audit-welcome"><div><p className="eyebrow">متابعة التغييرات</p><h1>سجل التدقيق</h1><p className="welcome-copy">من عدّل بيانات الموظفين والحضور والطلبات والتقييمات، ومتى تم التعديل.</p></div><span className="audit-count">آخر {rows.length} حركة</span></section><AuditLog rows={rows} /></main></EmployeeWorkspace>;
 }

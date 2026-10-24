@@ -6,13 +6,15 @@ import { useState } from "react";
 type NavigationItem = { label: string; href: string; icon: string; breadcrumb?: string };
 
 const employeeShortcuts: NavigationItem[] = [
-  { label: "طلب إذن", href: "/effects", icon: "◷", breadcrumb: "المؤثرات الأسبوعية" },
+  { label: "طلب إذن", href: "/effects", icon: "◷", breadcrumb: "الطلبات والقرارات" },
   { label: "أهدافي", href: "/goals", icon: "◎", breadcrumb: "أهدافي" },
   { label: "تقييماتي", href: "/my-evaluations", icon: "☆", breadcrumb: "تقييماتي" },
   { label: "الإبلاغ", href: "/report", icon: "!", breadcrumb: "الإبلاغ" },
 ];
 
-const primaryRoutes = ["/", "/employees", "/attendance", "/effects"];
+// Keep the employee's goals and the weekly requests close at hand on phones.
+// The full directory and less frequent tools remain available under More.
+const primaryRoutes = ["/", "/effects", "/goals", "/attendance"];
 
 export default function MobileWorkspaceNavigation({ items, roleLabel, breadcrumb }: { items: NavigationItem[]; roleLabel: string; breadcrumb: string }) {
   const [moreOpen, setMoreOpen] = useState(false);
