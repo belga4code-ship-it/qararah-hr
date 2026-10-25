@@ -52,7 +52,11 @@ export default function AttendanceRecords({ rows, canExport }: { rows: Attendanc
   const filtered = useMemo(() => rows.filter((row) => {
     const name = row.employee?.full_name || [row.employee?.first_name, row.employee?.last_name].filter(Boolean).join(" ") || "";
     const text = [name, row.employee?.employee_number, row.employee?.zkt_user_id, row.employee?.job_title?.name, row.employee?.status, row.employee?.branch?.name].filter(Boolean).map(toWesternDigits).join(" ").toLocaleLowerCase("ar");
-    return (!query || text.includes(query.trim().toLocaleLowerCase("ar"))) && (status === "all" || row.status === status) && (branch === "all" || row.employee?.branch?.name === branch);
+    // Imported attendance rows are often stored as "present" even when the
+    // punch time is late. Match the same lateness rule used by the row display.
+    const isLate = row.status === "late" || lateMinutesAfter915(row.first_in) !== null;
+    const matchesStatus = status === "all" || (status === "late" ? isLate : row.status === status);
+    return (!query || text.includes(query.trim().toLocaleLowerCase("ar"))) && matchesStatus && (branch === "all" || row.employee?.branch?.name === branch);
   }), [rows, query, status, branch]);
   const exportRows = useMemo(() => filtered.filter((row) => row.employee?.attendance_required !== false), [filtered]);
 
