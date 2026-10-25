@@ -1,6 +1,6 @@
 export type Role = "admin" | "hr" | "branch_manager" | "accountant" | "employee" | "auditor";
-export type Criterion = { name: string; score: number; evidence: string };
-export type EvaluatedEmployee = { id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null; status: string; branch_id: string; department_id: string | null; department_name: string; job_title_name: string; branch_name: string };
+export type Criterion = { name: string; score: number; evidence: string; scorePercent?: number | null };
+export type EvaluatedEmployee = { id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null; status: string; attendance_required: boolean; branch_id: string; department_id: string | null; department_name: string; job_title_name: string; branch_name: string };
 export type EvaluatorOption = { employee_id: string; full_name: string; job_title_name: string; branch_name: string; has_system_account: boolean | null };
 export type EvaluationAssignment = { employee_id: string; slot: number; evaluator_profile_id: string | null; evaluator_employee_id: string | null; evaluator_employee: { id: string; employee_number: string; first_name: string; last_name: string | null; full_name: string | null; job_title: { name: string } | null; branch: { name: string } | null } | null };
 export type EvaluationRecord = { id: string; employee_id: string; period_month: string; evaluator_id: string | null; total_score: number | null; max_score: number; status: string; notes: string | null; evaluation_items: { criterion: string; score: number; max_score: number; evidence: string | null }[] };

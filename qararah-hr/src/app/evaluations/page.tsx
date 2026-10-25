@@ -37,7 +37,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
 
   const employeeQuery = supabase
     .from("employees")
-    .select("id,employee_number,first_name,last_name,full_name,status,branch_id,department_id,job_title:job_titles(name),branch:branches(name),department:departments(name)")
+    .select("id,employee_number,first_name,last_name,full_name,status,attendance_required,branch_id,department_id,job_title:job_titles(name),branch:branches(name),department:departments(name)")
     .order("employee_number");
   const [{ data: employeeData }, { data: evaluationData }, { data: evaluatorProfiles, error: evaluatorProfilesError }] = await Promise.all([
     canViewAll ? employeeQuery : assignedIds.length ? employeeQuery.in("id", assignedIds) : Promise.resolve({ data: [] }),
@@ -49,7 +49,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
     const job = row.job_title as unknown as { name: string } | null;
     const branch = row.branch as unknown as { name: string } | null;
     const department = row.department as unknown as { name: string } | null;
-    return { id: row.id, employee_number: row.employee_number, first_name: row.first_name, last_name: row.last_name, full_name: row.full_name, status: row.status, branch_id: row.branch_id, department_id: row.department_id, department_name: department?.name ?? "", job_title_name: job?.name ?? "", branch_name: branch?.name ?? "" };
+    return { id: row.id, employee_number: row.employee_number, first_name: row.first_name, last_name: row.last_name, full_name: row.full_name, status: row.status, attendance_required: row.attendance_required !== false, branch_id: row.branch_id, department_id: row.department_id, department_name: department?.name ?? "", job_title_name: job?.name ?? "", branch_name: branch?.name ?? "" };
   }) as EvaluatedEmployee[];
   const linkedEmployeeIds = new Set((evaluatorProfiles ?? []).map((candidate) => candidate.employee_id).filter(Boolean));
   const hasFullProfileRoster = ["admin", "hr"].includes(profile.role) && !evaluatorProfilesError;

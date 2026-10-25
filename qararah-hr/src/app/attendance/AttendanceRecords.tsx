@@ -42,23 +42,48 @@ function formatDelay(value: number) {
   return `${toWesternDigits(hours)} ساعة و${toWesternDigits(minutes)} دقيقة`;
 }
 
+function isLateRow(row: AttendanceRecordRow) {
+  return row.status === "late" || lateMinutesAfter915(row.first_in) !== null;
+}
+
 export default function AttendanceRecords({ rows, canExport }: { rows: AttendanceRecordRow[]; canExport: boolean }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [branch, setBranch] = useState("all");
+  const [sort, setSort] = useState("date_desc");
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const branches = useMemo(() => [...new Set(rows.map((row) => row.employee?.branch?.name).filter((name): name is string => Boolean(name)))].sort((a, b) => a.localeCompare(b, "ar")), [rows]);
-  const filtered = useMemo(() => rows.filter((row) => {
+  const searchedRows = useMemo(() => rows.filter((row) => {
     const name = row.employee?.full_name || [row.employee?.first_name, row.employee?.last_name].filter(Boolean).join(" ") || "";
     const text = [name, row.employee?.employee_number, row.employee?.zkt_user_id, row.employee?.job_title?.name, row.employee?.status, row.employee?.branch?.name].filter(Boolean).map(toWesternDigits).join(" ").toLocaleLowerCase("ar");
-    // Imported attendance rows are often stored as "present" even when the
-    // punch time is late. Match the same lateness rule used by the row display.
-    const isLate = row.status === "late" || lateMinutesAfter915(row.first_in) !== null;
-    const matchesStatus = status === "all" || (status === "late" ? isLate : row.status === status);
-    return (!query || text.includes(query.trim().toLocaleLowerCase("ar"))) && matchesStatus && (branch === "all" || row.employee?.branch?.name === branch);
-  }), [rows, query, status, branch]);
-  const exportRows = useMemo(() => filtered.filter((row) => row.employee?.attendance_required !== false), [filtered]);
+    return (!query || text.includes(query.trim().toLocaleLowerCase("ar"))) && (branch === "all" || row.employee?.branch?.name === branch);
+  }), [rows, query, branch]);
+  const statusCounts = useMemo(() => ({
+    all: searchedRows.length,
+    late: searchedRows.filter(isLateRow).length,
+    absent: searchedRows.filter((row) => row.status === "absent").length,
+    incomplete: searchedRows.filter((row) => row.status === "incomplete").length,
+  }), [searchedRows]);
+  const filtered = useMemo(() => searchedRows
+    .filter((row) => status === "all" || (status === "late" ? isLateRow(row) : row.status === status))
+    .sort((a, b) => {
+      if (sort === "delay_desc" || sort === "delay_asc") {
+        const aDelay = lateMinutesAfter915(a.first_in) ?? (a.status === "late" ? 0 : -1);
+        const bDelay = lateMinutesAfter915(b.first_in) ?? (b.status === "late" ? 0 : -1);
+        return sort === "delay_desc" ? bDelay - aDelay : aDelay - bDelay;
+      }
+      const comparison = a.attendance_date.localeCompare(b.attendance_date) || (a.first_in ?? "").localeCompare(b.first_in ?? "");
+      return sort === "date_desc" ? -comparison : comparison;
+    }), [searchedRows, status, sort]);
+  const exportRows = filtered;
+  const summary = useMemo(() => ({
+    total: filtered.length,
+    present: filtered.filter((row) => ["present", "on_mission"].includes(row.status) && !isLateRow(row)).length,
+    late: filtered.filter(isLateRow).length,
+    absent: filtered.filter((row) => row.status === "absent").length,
+    incomplete: filtered.filter((row) => row.status === "incomplete").length,
+  }), [filtered]);
 
   async function exportExcel() {
     if (!exportRows.length || exporting) return;
@@ -107,7 +132,7 @@ export default function AttendanceRecords({ rows, canExport }: { rows: Attendanc
       anchor.download = `سجل-الحضور-${toWesternDigits(reportDates[0])}-${toWesternDigits(reportDates.at(-1))}.xlsx`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setExportMessage(`تم تصدير ${toWesternDigits(exportRows.length)} سجلًا للموظفين المطلوب منهم البصمة.`);
+      setExportMessage(`تم تصدير ${toWesternDigits(exportRows.length)} سجلًا حسب الفلاتر والترتيب الظاهرين.`);
     } catch (error) {
       setExportMessage(error instanceof Error ? `تعذر تصدير الملف: ${error.message}` : "تعذر تصدير الملف.");
     } finally {
@@ -118,13 +143,25 @@ export default function AttendanceRecords({ rows, canExport }: { rows: Attendanc
   return <>
     <div className="attendance-record-tools">
       <label className="attendance-search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث بالاسم أو رقم الموظف أو كود البصمة" aria-label="ابحث في سجلات الحضور" /></label>
-      <label className="attendance-filter"><span>الحالة</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">كل الحالات</option>{Object.entries(labels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+      <label className="attendance-filter"><span>حالة أخرى</span><select value={["present", "on_mission", "leave", "needs_review"].includes(status) ? status : ""} onChange={(event) => setStatus(event.target.value || "all")}><option value="">كل الحالات</option>{["present", "on_mission", "leave", "needs_review"].map((value) => <option value={value} key={value}>{labels[value]}</option>)}</select></label>
       <label className="attendance-filter"><span>الفرع</span><select value={branch} onChange={(event) => setBranch(event.target.value)}><option value="all">كل الفروع</option>{branches.map((name) => <option key={name}>{name}</option>)}</select></label>
+      <label className="attendance-filter attendance-sort"><span>ترتيب</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="date_desc">الأحدث تاريخًا</option><option value="date_asc">الأقدم تاريخًا</option><option value="delay_desc">الأكثر تأخيرًا</option><option value="delay_asc">الأقل تأخيرًا</option></select></label>
       <span className="attendance-result-count">{toWesternDigits(filtered.length)} سجل</span>
+    </div>
+    <div className="attendance-status-tabs" role="group" aria-label="تصفية حالات الحضور">
+      {(["all", "late", "absent", "incomplete"] as const).map((value) => <button key={value} type="button" className={status === value ? "active" : ""} aria-pressed={status === value} onClick={() => setStatus(value)}><span>{value === "all" ? "الكل" : labels[value]}</span><b>{toWesternDigits(statusCounts[value])}</b></button>)}
+    </div>
+    <div className="attendance-filter-summary" aria-live="polite">
+      <article><span>النتائج</span><strong>{toWesternDigits(summary.total)}</strong></article>
+      <article className="present"><span>حضور / مأمورية</span><strong>{toWesternDigits(summary.present)}</strong></article>
+      <article className="late"><span>تأخير</span><strong>{toWesternDigits(summary.late)}</strong></article>
+      <article className="absent"><span>غياب</span><strong>{toWesternDigits(summary.absent)}</strong></article>
+      <article className="incomplete"><span>بصمة ناقصة</span><strong>{toWesternDigits(summary.incomplete)}</strong></article>
     </div>
     {canExport && <button className="attendance-export-fab" type="button" onClick={exportExcel} disabled={!exportRows.length || exporting} style={{ position: "fixed", zIndex: 1200, left: 24, bottom: 22, display: "flex", alignItems: "center", gap: 9, minHeight: 48, padding: "0 17px", border: 0, borderRadius: 13, background: "#0f766e", color: "#fff", boxShadow: "0 8px 24px #0f172a30", font: "inherit", fontSize: 12, fontWeight: 750, cursor: exportRows.length && !exporting ? "pointer" : "not-allowed", opacity: exportRows.length && !exporting ? 1 : 0.55 }}><span className="attendance-export-icon" aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 27, height: 27, border: "1px solid #ffffff50", borderRadius: 8, fontSize: 17, lineHeight: 1 }}>⇩</span><span>{exporting ? "جارٍ تجهيز Excel…" : "تصدير Excel"}</span></button>}
     {exportMessage && <div className="attendance-export-message" role="status">{exportMessage}</div>}
-    {filtered.length ? <div className="table-wrap attendance-table-wrap"><table className="attendance-record-table"><thead><tr><th>التاريخ</th><th>الموظف</th><th>الكود الوظيفي</th><th>كود البصمة</th><th>الفرع</th><th>أول دخول</th><th>آخر خروج</th><th>مدة العمل</th><th>الحالة / الملاحظة</th></tr></thead><tbody>{filtered.map((row) => {
+    {filtered.length ? <>
+      <div className="table-wrap attendance-table-wrap"><table className="attendance-record-table"><thead><tr><th>التاريخ</th><th>الموظف</th><th>الكود الوظيفي</th><th>كود البصمة</th><th>الفرع</th><th>أول دخول</th><th>آخر خروج</th><th>مدة العمل</th><th>الحالة / الملاحظة</th></tr></thead><tbody>{filtered.map((row) => {
       const employee = row.employee;
       const name = employee?.full_name || [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || "موظف غير معروف";
       const employeeStatus = employeeStatusLabels[employee?.status ?? ""] ?? "غير محددة";
@@ -133,6 +170,20 @@ export default function AttendanceRecords({ rows, canExport }: { rows: Attendanc
       const isLate = lateMinutes !== null || row.status === "late";
       const attendanceLabel = row.status === "late" ? "حضور" : labels[row.status] ?? toWesternDigits(row.status);
       return <tr key={row.id}><td className="code-cell attendance-date-cell">{toWesternDigits(row.attendance_date)}</td><td><div className="employee-cell attendance-employee-cell"><span className="employee-avatar">{name.charAt(0)}</span><div className="attendance-employee-meta"><strong>{name}</strong><div className="attendance-employee-details"><span className="attendance-job-title">الصفة: {toWesternDigits(jobTitle)}</span><span className={`attendance-employee-state${employee?.status === "active" ? " active" : ""}`}>{employeeStatus}</span><span className="attendance-tenure">مدة الخدمة: {serviceLength(employee?.hired_on ?? null)}</span></div></div></div></td><td className="code-cell">{toWesternDigits(employee?.employee_number ?? "—")}</td><td className="code-cell">{toWesternDigits(employee?.zkt_user_id ?? "—")}</td><td>{toWesternDigits(employee?.branch?.name ?? "—")}</td><td className="code-cell">{formatTime(row.first_in)}</td><td className="code-cell">{formatTime(row.last_out)}</td><td className="code-cell">{formatTime(row.total_work)}</td><td><span className={`attendance-status ${isLate ? "late" : row.status}`}>{attendanceLabel}</span>{isLate ? <span className="attendance-late-detail">تأخير{lateMinutes !== null ? ` ${formatDelay(lateMinutes)}` : ""}</span> : null}{row.exception_note && <small className="attendance-row-note">{toWesternDigits(row.exception_note)}</small>}</td></tr>;
-    })}</tbody></table></div> : <div className="attendance-table-empty">{rows.length ? "ما فيش سجلات تطابق خيارات البحث." : "ما فيش سجلات حضور لهذا اليوم. اختار تاريخًا ثانيًا أو ارفع تقرير ZKT."}</div>}
+    })}</tbody></table></div>
+      <div className="attendance-mobile-cards">{filtered.map((row) => {
+        const employee = row.employee;
+        const name = employee?.full_name || [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || "موظف غير معروف";
+        const lateMinutes = lateMinutesAfter915(row.first_in);
+        const isLate = isLateRow(row);
+        const statusLabel = isLate ? "تأخير" : labels[row.status] ?? toWesternDigits(row.status);
+        return <article className={`attendance-mobile-card${isLate ? " is-late" : ""}`} key={row.id}>
+          <div className="attendance-mobile-card-top"><div><strong>{name}</strong><small>{toWesternDigits(employee?.employee_number ?? "—")}</small></div><span className={`attendance-status ${isLate ? "late" : row.status}`}>{statusLabel}</span></div>
+          <div className="attendance-mobile-card-meta"><span><small>التاريخ</small><b>{toWesternDigits(row.attendance_date)}</b></span><span><small>الفرع</small><b>{toWesternDigits(employee?.branch?.name ?? "—")}</b></span><span><small>الدخول</small><b>{formatTime(row.first_in)}</b></span><span><small>الانصراف</small><b>{formatTime(row.last_out)}</b></span></div>
+          {isLate && <div className="attendance-mobile-delay">التأخير: {lateMinutes !== null ? formatDelay(lateMinutes) : "محدد في سجل البصمة"}</div>}
+          {row.exception_note && <p className="attendance-mobile-note">{toWesternDigits(row.exception_note)}</p>}
+        </article>;
+      })}</div>
+    </> : <div className="attendance-table-empty">{rows.length ? "ما فيش سجلات تطابق خيارات البحث." : "ما فيش سجلات حضور لهذا اليوم. اختار تاريخًا ثانيًا أو ارفع تقرير ZKT."}</div>}
   </>;
 }

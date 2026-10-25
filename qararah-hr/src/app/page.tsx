@@ -34,8 +34,11 @@ export default async function Home() {
   const { data: profile } = await loadAccessProfile<{full_name:string | null;role:string;branch_id:string | null;employee_id:string | null}>(supabase,user.id,"full_name,role,branch_id,employee_id,user_roles,additional_permissions","full_name,role,branch_id,employee_id");
   if (!profile) redirect("/setup-required");
   const roles = [...new Set([profile.role,...((profile.user_roles as string[] | null) ?? [])])];
+  const permissions = (profile.additional_permissions as string[] | null) ?? [];
   const isBranchManager = roles.includes("branch_manager");
   const isHeadOffice = roles.some((role) => ["admin", "hr"].includes(role));
+  const canReviewRequests = roles.some((role) => ["admin", "hr", "branch_manager", "accountant", "auditor"].includes(role)) || permissions.some((permission) => ["effects.approve", "effects.manage_deductions"].includes(permission));
+  const canEvaluateAssigned = roles.some((role) => ["admin", "hr", "branch_manager", "accountant", "auditor"].includes(role)) || permissions.includes("evaluations.evaluate");
 
   const now = new Date();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -49,54 +52,66 @@ export default async function Home() {
     supabase.from("attendance_records").select("employee_id,attendance_date,status").gte("attendance_date", weekStart).lte("attendance_date", today),
   ]);
 
-  let managerRequests: PendingRequest[] = [];
-  let managerEvaluations: Array<{ id: string; name: string; employeeNumber: string }> = [];
-  let pendingManagementRequests = 0;
-  let overdueManagementTasks = 0;
-  let goalReminders: Array<{ id: string; task: string; goal: string; employee: string; employeeNumber: string; dueDate: string; overdue: boolean }> = [];
   const reminderEndDate = new Date(`${today}T12:00:00Z`);
   reminderEndDate.setUTCDate(reminderEndDate.getUTCDate() + 7);
   const reminderEnd = reminderEndDate.toISOString().slice(0, 10);
-  const { data: reminderData } = await supabase.from("employee_goal_tasks")
-    .select("id,title,due_date,goal:employee_goals!inner(title,employee:employees!inner(full_name,first_name,last_name,employee_number))")
-    .eq("is_completed", false).not("due_date", "is", null).lte("due_date", reminderEnd).order("due_date").limit(12);
-  goalReminders = ((reminderData ?? []) as unknown as GoalReminder[]).filter((task): task is GoalReminder & { due_date: string } => Boolean(task.due_date)).map((task) => {
+
+  const requestSummary = async () => {
+    if (!canReviewRequests) return { requests: [] as PendingRequest[], count: 0 };
+    const [{ data: directSteps }, { data: sharedSteps }] = await Promise.all([
+      supabase.from("hr_event_approval_steps").select("event_id").eq("status", "pending").eq("approver_profile_id", user.id),
+      supabase.from("hr_event_approval_steps").select("event_id").eq("status", "pending").contains("approver_profile_ids", [user.id]),
+    ]);
+    const activeRequestIds = [...new Set([...(directSteps ?? []), ...(sharedSteps ?? [])].map((step) => step.event_id))];
+    if (!activeRequestIds.length) return { requests: [] as PendingRequest[], count: 0 };
+    let requestQuery = supabase.from("hr_events").select("id,event_type,details,created_at,employee:employees!inner(full_name,first_name,last_name,employee_number,branch_id)", { count: "exact" }).in("id", activeRequestIds).eq("status", "pending").order("created_at", { ascending: false });
+    if (isBranchManager && !isHeadOffice && !permissions.includes("effects.view_all")) requestQuery = requestQuery.eq("branch_id", profile.branch_id ?? "00000000-0000-0000-0000-000000000000");
+    const { data, count } = await requestQuery.limit(12);
+    const requests = (data ?? []) as unknown as PendingRequest[];
+    return { requests, count: count ?? requests.length };
+  };
+
+  const evaluationSummary = async () => {
+    if (!canEvaluateAssigned) return { evaluations: [] as Array<{ id: string; name: string; employeeNumber: string }>, count: 0 };
+    const monthStart = `${new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit" }).format(now)}-01`;
+    const { data: assignmentData } = await supabase.from("employee_evaluators")
+      .select("employee_id,evaluator_profile_id,evaluator_employee_id")
+      .or(`evaluator_profile_id.eq.${user.id}${profile.employee_id ? `,evaluator_employee_id.eq.${profile.employee_id}` : ""}`);
+    const ownAssignments = (assignmentData ?? []).filter((row) => row.evaluator_profile_id === user.id || row.evaluator_employee_id === profile.employee_id);
+    const assignedIds = [...new Set(ownAssignments.map((row) => row.employee_id))];
+    if (!assignedIds.length) return { evaluations: [] as Array<{ id: string; name: string; employeeNumber: string }>, count: 0 };
+    const [{ data: assignedEmployees }, { data: submittedEvaluations }] = await Promise.all([
+      supabase.from("employees").select("id,full_name,first_name,last_name,employee_number").in("id", assignedIds).eq("status", "active").order("employee_number").limit(100),
+      supabase.from("evaluations").select("employee_id").eq("period_month", monthStart).eq("evaluator_id", user.id).eq("status", "submitted").in("employee_id", assignedIds),
+    ]);
+    const evaluatedIds = new Set((submittedEvaluations ?? []).map((row) => row.employee_id));
+    const pendingEvaluations = (assignedEmployees ?? []).filter((employee) => !evaluatedIds.has(employee.id));
+    return {
+      count: pendingEvaluations.length,
+      evaluations: pendingEvaluations.slice(0, 5).map((employee) => ({ id: employee.id, name: employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" "), employeeNumber: employee.employee_number })),
+    };
+  };
+
+  const [{ data: reminderData }, { count: overdueCount }, requestResult, evaluationResult] = await Promise.all([
+    supabase.from("employee_goal_tasks")
+      .select("id,title,due_date,goal:employee_goals!inner(title,employee:employees!inner(full_name,first_name,last_name,employee_number))")
+      .eq("is_completed", false).not("due_date", "is", null).lte("due_date", reminderEnd).order("due_date").limit(12),
+    isHeadOffice
+      ? supabase.from("employee_goal_tasks").select("id", { count: "exact", head: true }).eq("is_completed", false).not("due_date", "is", null).lt("due_date", today)
+      : Promise.resolve({ count: 0 }),
+    requestSummary(),
+    evaluationSummary(),
+  ]);
+  const managerRequests = requestResult.requests;
+  const managerRequestCount = requestResult.count;
+  const managerEvaluations = evaluationResult.evaluations;
+  const managerEvaluationCount = evaluationResult.count;
+  const overdueManagementTasks = overdueCount ?? 0;
+  const goalReminders = ((reminderData ?? []) as unknown as GoalReminder[]).filter((task): task is GoalReminder & { due_date: string } => Boolean(task.due_date)).map((task) => {
     const goal = Array.isArray(task.goal) ? task.goal[0] : task.goal;
     const employee = goal && Array.isArray(goal.employee) ? goal.employee[0] : goal?.employee;
     return { id: task.id, task: task.title, goal: goal?.title ?? "هدف", employee: employee?.full_name || [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || "موظف", employeeNumber: employee?.employee_number ?? "", dueDate: task.due_date, overdue: task.due_date < today };
   });
-  if (isHeadOffice) {
-    const [{ count: pendingCount }, { count: overdueCount }] = await Promise.all([
-      supabase.from("hr_events").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("employee_goal_tasks").select("id", { count: "exact", head: true }).eq("is_completed", false).not("due_date", "is", null).lt("due_date", today),
-    ]);
-    pendingManagementRequests = pendingCount ?? 0;
-    overdueManagementTasks = overdueCount ?? 0;
-  }
-  if (isBranchManager && profile.branch_id) {
-    const monthStart = `${new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Tripoli", year: "numeric", month: "2-digit" }).format(now)}-01`;
-    const [{ data: requestData }, { data: assignmentData }] = await Promise.all([
-      supabase.from("hr_events").select("id,event_type,details,created_at,employee:employees!inner(full_name,first_name,last_name,employee_number,branch_id)").eq("branch_id", profile.branch_id).eq("status", "pending").in("event_type", ["leave", "permission", "late_permission"]).order("created_at", { ascending: false }).limit(30),
-      supabase.from("employee_evaluators").select("employee_id,evaluator_profile_id,evaluator_employee_id").or(`evaluator_profile_id.eq.${user.id}${profile.employee_id ? `,evaluator_employee_id.eq.${profile.employee_id}` : ""}`),
-    ]);
-    const requests = (requestData ?? []) as unknown as PendingRequest[];
-    if (requests.length) {
-      const { data: approvalData } = await supabase.from("hr_event_approval_steps").select("event_id,step_order,status,approver_profile_id,approver_profile_ids").in("event_id", requests.map((request) => request.id)).eq("status", "pending");
-      const activeRequestIds = new Set((approvalData ?? []).filter((step) => step.approver_profile_id === user.id || ((step.approver_profile_ids as string[] | null) ?? []).includes(user.id)).map((step) => step.event_id));
-      managerRequests = requests.filter((request) => activeRequestIds.has(request.id)).slice(0, 5);
-    }
-    const ownAssignments = (assignmentData ?? []).filter((row) => row.evaluator_profile_id === user.id || (profile.employee_id && row.evaluator_employee_id === profile.employee_id));
-    const assignedIds = [...new Set(ownAssignments.map((row) => row.employee_id))];
-    if (assignedIds.length) {
-      const [{ data: assignedEmployees }, { data: submittedEvaluations }] = await Promise.all([
-        supabase.from("employees").select("id,full_name,first_name,last_name,employee_number").in("id", assignedIds).eq("branch_id", profile.branch_id).eq("status", "active").order("employee_number").limit(100),
-        supabase.from("evaluations").select("employee_id").eq("period_month", monthStart).eq("evaluator_id", user.id).eq("status", "submitted").in("employee_id", assignedIds),
-      ]);
-      const evaluatedIds = new Set((submittedEvaluations ?? []).map((row) => row.employee_id));
-      managerEvaluations = (assignedEmployees ?? []).filter((employee) => !evaluatedIds.has(employee.id)).slice(0, 5).map((employee) => ({ id: employee.id, name: employee.full_name || [employee.first_name, employee.last_name].filter(Boolean).join(" "), employeeNumber: employee.employee_number }));
-    }
-  }
-
   const employees = ((employeeData ?? []) as unknown as Array<Omit<Employee, "job_title" | "branch" | "department"> & { job_title: { name: string } | { name: string }[] | null; branch: { name: string } | { name: string }[] | null; department: { name: string } | { name: string }[] | null }>).map((employee) => ({
     ...employee,
     job_title: Array.isArray(employee.job_title) ? employee.job_title[0] ?? null : employee.job_title,
@@ -114,6 +129,27 @@ export default async function Home() {
   const reviewCount = requiredAttendance.filter((row) => ["needs_review", "incomplete", "absent"].includes(row.status)).length;
   const presentPercent = attendanceRequiredEmployees.length ? Math.round((presentCount / attendanceRequiredEmployees.length) * 100) : 0;
   const exceptions = requiredAttendance.filter((row) => ["needs_review", "incomplete", "absent"].includes(row.status)).slice(0, 8);
+  const inboxTasks: Array<{ id: string; kind: "request" | "evaluation" | "goal" | "attendance"; title: string; detail: string; href: string; label: string; urgent: boolean }> = [];
+  for (const request of managerRequests.slice(0, 5)) {
+    const employee = Array.isArray(request.employee) ? request.employee[0] : request.employee;
+    const eventLabel: Record<string, string> = { leave: "إجازة", permission: "إذن خروج", late_permission: "إذن تأخير", deduction: "خصم", mission: "مأمورية", new_hire: "تعيين جديد", termination: "إنهاء خدمة" };
+    const employeeName = employee?.full_name || [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || "موظف";
+    inboxTasks.push({ id: `request-${request.id}`, kind: "request", title: `${eventLabel[request.event_type] ?? "طلب موارد بشرية"} · ${employeeName}`, detail: `${employee?.employee_number ?? ""} · ينتظر قرارك`, href: "/effects", label: "اتخاذ قرار", urgent: true });
+  }
+  for (const employee of managerEvaluations.slice(0, 4)) {
+    inboxTasks.push({ id: `evaluation-${employee.id}`, kind: "evaluation", title: `تقييم ${employee.name}`, detail: `${employee.employeeNumber} · تقييم هذا الشهر لم يُرسل بعد`, href: "/evaluations", label: "بدء التقييم", urgent: true });
+  }
+  for (const task of goalReminders.slice(0, 4)) {
+    inboxTasks.push({ id: `goal-${task.id}`, kind: "goal", title: task.task, detail: `${task.employee} · ${task.goal}`, href: "/goals", label: task.overdue ? "متأخرة" : `موعدها ${toWesternDigits(task.dueDate)}`, urgent: task.overdue });
+  }
+  if (isHeadOffice && overdueManagementTasks > goalReminders.filter((task) => task.overdue).length) {
+    inboxTasks.push({ id: "goals-overdue-summary", kind: "goal", title: "مهام أهداف متأخرة أخرى", detail: "توجد مهام تجاوزت موعدها وتحتاج متابعة", href: "/goals", label: `${toWesternDigits(overdueManagementTasks)} مهمة`, urgent: true });
+  }
+  if (reviewCount > 0 && roles.some((role) => ["admin", "hr", "branch_manager", "auditor", "accountant"].includes(role))) {
+    inboxTasks.push({ id: "attendance-review", kind: "attendance", title: "حالات حضور تحتاج مراجعة", detail: "غياب أو بصمة ناقصة ضمن السجلات المتاحة لحسابك", href: "/attendance", label: `${toWesternDigits(reviewCount)} حالة`, urgent: true });
+  }
+  const inboxTaskCount = Math.max(inboxTasks.length, managerRequestCount + managerEvaluationCount + goalReminders.length + Number(reviewCount > 0));
+  const hasMoreInboxTasks = managerRequests.length > 5 || managerRequestCount > managerRequests.length || managerEvaluationCount > managerEvaluations.length || goalReminders.length > 4 || inboxTasks.length > 9;
   const weekDays = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(weekStartDate);
     date.setDate(date.getDate() + index);
@@ -135,34 +171,16 @@ export default async function Home() {
         <div className="page-content">
           <div className="welcome-row"><div><p className="eyebrow">{todayLabel}</p><h1>الرئيسية</h1><p className="welcome-copy">نظرة عامة على شؤون الموظفين والحضور في الفروع المصرح بها لحسابك.</p></div>{profile.role !== "employee" && <Link className="primary-button" href="/employees"><span>♙</span> إدارة الموظفين</Link>}</div>
 
-          {isHeadOffice && <section className="management-priority-grid" aria-label="لوحة متابعة الإدارة">
-            <Link href="/effects" className="management-priority-card"><span className="management-priority-icon amber">◷</span><span><b>طلبات معلّقة</b><small>افتح الطلبات واتخذ الإجراء</small></span><strong>{pendingManagementRequests}</strong><i>←</i></Link>
-            <Link href="/goals" className="management-priority-card"><span className="management-priority-icon rose">!</span><span><b>مهام أهداف متأخرة</b><small>راجع المهام التي تجاوزت موعدها</small></span><strong>{overdueManagementTasks}</strong><i>←</i></Link>
-            <Link href="/attendance" className="management-priority-card"><span className="management-priority-icon blue">◉</span><span><b>حالات حضور للمراجعة</b><small>غياب أو بصمة ناقصة اليوم</small></span><strong>{reviewCount}</strong><i>←</i></Link>
-          </section>}
-
-          {goalReminders.length > 0 && <section className="goal-reminders-panel" aria-label="تنبيهات مواعيد مهام الأهداف">
-            <div className="goal-reminders-heading"><div><span className="goal-reminders-icon">◷</span><span><h2>تنبيهات مواعيد المهام</h2><small>المهام المتأخرة أو التي يحين موعدها خلال أسبوع</small></span></div><Link href="/goals">متابعة الأهداف ←</Link></div>
-            <div className="goal-reminders-list">{goalReminders.slice(0, 5).map((task) => <article key={task.id} className={task.overdue ? "overdue" : "upcoming"}><span><b>{task.task}</b><small>{task.employee} · {task.goal}</small></span><strong>{task.overdue ? "متأخرة" : `موعدها ${toWesternDigits(task.dueDate)}`}</strong></article>)}</div>
-          </section>}
-
-          {isBranchManager && <section className="manager-priority-grid" aria-label="أولويات مدير الفرع">
-            <article className="manager-priority-card manager-requests-card">
-              <div className="manager-priority-heading"><div><span className="manager-priority-icon">◷</span><div><h2>طلبات تنتظر قرارك</h2><p>الإجازات والأذونات والتأخير في فرعك</p></div></div><strong>{managerRequests.length}</strong></div>
-              {managerRequests.length ? <ul className="manager-priority-list">{managerRequests.map((request) => {
-                const employee = Array.isArray(request.employee) ? request.employee[0] : request.employee;
-                const label = request.event_type === "leave" ? "إجازة" : request.event_type === "permission" ? "إذن خروج" : "تأخير";
-                const employeeName = employee?.full_name || [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || "موظف";
-                return <li key={request.id}><span><b>{label}</b><small>{employeeName} · {employee?.employee_number ?? ""}</small></span><Link href="/effects">مراجعة <span aria-hidden="true">←</span></Link></li>;
-              })}</ul> : <p className="manager-priority-empty">لا توجد طلبات معلّقة تحتاج قرارك الآن.</p>}
-              <Link className="manager-priority-footer" href="/effects">فتح الطلبات والقرارات <span aria-hidden="true">←</span></Link>
-            </article>
-            <article className="manager-priority-card manager-evaluations-card">
-              <div className="manager-priority-heading"><div><span className="manager-priority-icon">☆</span><div><h2>تقييمات هذا الشهر</h2><p>الموظفون المكلّف بتقييمهم في فرعك</p></div></div><strong>{managerEvaluations.length}</strong></div>
-              {managerEvaluations.length ? <ul className="manager-priority-list">{managerEvaluations.map((employee) => <li key={employee.id}><span><b>{employee.name}</b><small>{employee.employeeNumber}</small></span><Link href="/evaluations">تقييم <span aria-hidden="true">←</span></Link></li>)}</ul> : <p className="manager-priority-empty">لا توجد تقييمات معلّقة لك هذا الشهر.</p>}
-              <Link className="manager-priority-footer" href="/evaluations">فتح شاشة التقييمات <span aria-hidden="true">←</span></Link>
-            </article>
-          </section>}
+          <section className="work-inbox" aria-label="صندوق مهامك">
+            <div className="work-inbox-heading"><div><span className="work-inbox-icon">✓</span><span><h2>صندوق مهامك</h2><small>الطلبات والتقييمات ومواعيد المهام التي تحتاج متابعتك</small></span></div><span className="work-inbox-count">{toWesternDigits(inboxTaskCount)} مهمة</span></div>
+            {inboxTasks.length ? <div className="work-inbox-list">{inboxTasks.slice(0, 9).map((task) => <article className={`work-inbox-item ${task.kind}${task.urgent ? " urgent" : ""}`} key={task.id}>
+              <span className="work-inbox-item-icon" aria-hidden="true">{task.kind === "request" ? "◷" : task.kind === "evaluation" ? "☆" : task.kind === "goal" ? "◎" : "◉"}</span>
+              <span className="work-inbox-item-copy"><b>{task.title}</b><small>{task.detail}</small></span>
+              <span className="work-inbox-item-label">{task.label}</span>
+              <Link href={task.href} aria-label={`${task.label}: ${task.title}`}>فتح <span aria-hidden="true">←</span></Link>
+            </article>)}</div> : <p className="work-inbox-empty">ما عندكش مهام مستحقة الآن. ستظهر هنا الطلبات والتقييمات ومواعيد المهام عند الحاجة.</p>}
+            {hasMoreInboxTasks && <div className="work-inbox-footer">{managerRequestCount > 5 && <Link href="/effects">عرض الطلبات <span aria-hidden="true">←</span></Link>}{managerEvaluationCount > managerEvaluations.length && <Link href="/evaluations">عرض التقييمات <span aria-hidden="true">←</span></Link>}{goalReminders.length > 4 && <Link href="/goals">عرض مهام الأهداف <span aria-hidden="true">←</span></Link>}{reviewCount > 0 && <Link href="/attendance">فتح الحضور <span aria-hidden="true">←</span></Link>}</div>}
+          </section>
 
           <div className="stats-grid">
             <article className="stat-card"><div className="stat-top"><span className="stat-label">الموظفون النشطون</span><span className="stat-icon blue">♙</span></div><div className="stat-value">{employees.length}</div><div className="stat-foot"><span>حسب بيانات قاعدة الشركة</span></div></article>
