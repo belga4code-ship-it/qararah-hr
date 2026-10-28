@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toWesternDigits } from "@/lib/digits";
 import EvaluationDialog from "./EvaluationDialog";
 import EvaluationAssignmentDialog from "./EvaluationAssignmentDialog";
+import EvaluationReports from "./EvaluationReports";
 import { employeeName, monthLabel, type Role, type EvaluatedEmployee, type EvaluationAssignment, type EvaluationRecord, type EvaluatorOption } from "./evaluation-model";
 import "./EvaluationsWorkspace.css";
 
@@ -17,9 +18,11 @@ type Props = {
   assignments: EvaluationAssignment[];
   evaluators: EvaluatorOption[];
   evaluations: EvaluationRecord[];
+  evaluatorNames: Record<string, string>;
   canAssignEvaluators: boolean;
   canEvaluateAll: boolean;
   isBranchManager: boolean;
+  canViewReport: boolean;
 };
 type Filter = "all" | "mine_pending" | "mine_submitted" | "partial" | "complete" | "unassigned";
 const filterLabels: Record<Filter, string> = { all: "كل الموظفين", mine_pending: "بانتظار تقييمي", mine_submitted: "تم تقييمي", partial: "تقييم غير مكتمل", complete: "اكتملت التقييمات", unassigned: "بدون مقيّم" };
@@ -35,7 +38,7 @@ function EvaluationIcon({ kind }: { kind: "star" | "people" | "search" }) {
   </svg>;
 }
 
-export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, month, employees, assignments, evaluators, evaluations, canAssignEvaluators, canEvaluateAll, isBranchManager }: Props) {
+export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, month, employees, assignments, evaluators, evaluations, evaluatorNames, canAssignEvaluators, canEvaluateAll, isBranchManager, canViewReport }: Props) {
   const router = useRouter();
   const canAssign = role === "admin" || role === "hr" || canAssignEvaluators;
   const [search, setSearch] = useState("");
@@ -46,6 +49,7 @@ export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, 
   const [evaluationEmployeeId, setEvaluationEmployeeId] = useState<string | null>(null);
   const [assignmentEmployeeId, setAssignmentEmployeeId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<"work" | "reports">("work");
   const [isPending, startTransition] = useTransition();
   const [pendingMonth, setPendingMonth] = useState(month);
   const branches = [...new Map(employees.map(employee => [employee.branch_id, employee.branch_name || "الفرع غير محدد"])).entries()].sort((a, b) => a[1].localeCompare(b[1], "ar"));
@@ -94,8 +98,9 @@ export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, 
   }
 
   return <section className="evaluation-board" dir="rtl">
-    <header className="evaluation-board-hero"><div><span>الموارد البشرية / متابعة الأداء</span><h1>التقييمات الشهرية</h1><p>اختر الموظف وافتح نافذة التقييم، ثم سجّل إجاباتك وملاحظاتك.</p></div><div className="evaluation-period"><EvaluationIcon kind="star"/><div><small>فترة التقييم</small><strong>{monthLabel(month)}</strong></div></div></header>
-    <div className="evaluation-board-body">
+    <header className="evaluation-board-hero"><div><span>الموارد البشرية / متابعة الأداء</span><h1>{activeTab === "work" ? "التقييمات الشهرية" : "تقرير تقييم الأداء"}</h1><p>{activeTab === "work" ? "اختر الموظف وافتح نافذة التقييم، ثم سجّل إجاباتك وملاحظاتك." : "راجع النتائج وقارن الفروع والإدارات وصدّر التقرير حسب الفلاتر التي تحددها."}</p></div><div className="evaluation-period"><EvaluationIcon kind="star"/><div><small>فترة التقييم</small><strong>{monthLabel(month)}</strong></div></div></header>
+    <nav className="evaluation-workspace-tabs" aria-label="تقييم الأداء"><button type="button" className={activeTab === "work" ? "active" : ""} aria-pressed={activeTab === "work"} onClick={() => setActiveTab("work")}>★ الشغل</button>{canViewReport && <button type="button" className={activeTab === "reports" ? "active" : ""} aria-pressed={activeTab === "reports"} onClick={() => setActiveTab("reports")}>▦ التقارير</button>}</nav>
+    {activeTab === "reports" && canViewReport ? <EvaluationReports month={month} onMonthChange={chooseMonth} employees={employees} assignments={assignments} evaluations={evaluations} evaluatorNames={evaluatorNames}/> : <div className="evaluation-board-body">
       <div className="evaluation-board-metrics">
         <article><span>الموظفون المعروضون</span><strong>{matching.length}<small>موظف</small></strong><p>ضمن نطاق صلاحياتك والفلاتر المحددة</p></article>
         <article className="waiting"><span>بانتظار تقييمي</span><strong>{matching.filter(row => matchesFilter(row, "mine_pending")).length}<small>موظف</small></strong><p>موظفون متاحون لك ولم ترسل تقييمهم</p></article>
@@ -128,8 +133,8 @@ export default function EvaluationsWorkspace({ role, userId, profileEmployeeId, 
       })}</tbody></table>{!filtered.length && <div className="evaluation-register-empty"><span aria-hidden="true">☆</span><h3>{employees.length ? "لا يوجد موظفون يطابقون الفلاتر" : "لا يوجد موظفون مسندون للتقييم"}</h3><p>{employees.length ? "جرّب تغيير الفرع أو القسم أو حالة التقييم." : isBranchManager ? "سيظهر الموظفون هنا بعد إسناد مسؤولية تقييمهم إليك." : "تظهر هنا قائمة الموظفين المتاحين لحسابك حسب الصلاحيات والإسناد."}</p>{hasFilters && <button type="button" onClick={resetFilters}>عرض كل الموظفين</button>}</div>}</div>
       <footer className="evaluation-register-footer"><span>{filtered.length ? `${(currentPage - 1) * 10 + 1}–${Math.min(currentPage * 10, filtered.length)} من ${filtered.length} موظف` : "0 موظف"}</span><nav aria-label="صفحات سجل التقييم"><button type="button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>السابق</button><span>{currentPage} / {totalPages}</span><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>التالي</button></nav></footer>
       <p className="evaluation-board-footnote">تُحفظ إجابات كل مسؤول باسمه. يظهر المتوسط الحالي إلى حين تقديم جميع المقيّمين المسندين لتقييماتهم.</p>
-    </div>
-    {evaluationRow && <EvaluationDialog key={`${evaluationRow.employee.id}:${month}`} employee={evaluationRow.employee} month={month} userId={userId} existing={evaluationRow.mine} onClose={() => setEvaluationEmployeeId(null)} onSaved={saved}/>}
-    {canAssign && assignmentRow && <EvaluationAssignmentDialog key={assignmentRow.employee.id} employee={assignmentRow.employee} assignments={assignmentRow.assignments} evaluators={evaluators} onClose={() => setAssignmentEmployeeId(null)} onSaved={saved}/>}
+    </div>}
+    {activeTab === "work" && evaluationRow && <EvaluationDialog key={`${evaluationRow.employee.id}:${month}`} employee={evaluationRow.employee} month={month} userId={userId} existing={evaluationRow.mine} onClose={() => setEvaluationEmployeeId(null)} onSaved={saved}/>}
+    {activeTab === "work" && canAssign && assignmentRow && <EvaluationAssignmentDialog key={assignmentRow.employee.id} employee={assignmentRow.employee} assignments={assignmentRow.assignments} evaluators={evaluators} onClose={() => setAssignmentEmployeeId(null)} onSaved={saved}/>}
   </section>;
 }

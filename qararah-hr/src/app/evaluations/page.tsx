@@ -42,7 +42,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
   const [{ data: employeeData }, { data: evaluationData }, { data: evaluatorProfiles, error: evaluatorProfilesError }] = await Promise.all([
     canViewAll ? employeeQuery : assignedIds.length ? employeeQuery.in("id", assignedIds) : Promise.resolve({ data: [] }),
     supabase.from("evaluations").select("id,employee_id,period_month,evaluator_id,total_score,max_score,status,notes,evaluation_items(criterion,score,max_score,evidence)").eq("period_month", monthStart),
-    canAssignEvaluators ? supabase.from("profiles").select("employee_id") : Promise.resolve({ data: [], error: null }),
+    canAssignEvaluators ? supabase.from("profiles").select("id,employee_id,full_name") : Promise.resolve({ data: [], error: null }),
   ]);
 
   const employees = (employeeData ?? []).map((row) => {
@@ -60,6 +60,7 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
     branch_name: employee.branch_name,
     has_system_account: linkedEmployeeIds.has(employee.id) ? true : hasFullProfileRoster ? false : null,
   }));
+  const evaluatorNames = Object.fromEntries((evaluatorProfiles ?? []).filter((candidate) => candidate.full_name).map((candidate) => [candidate.id, candidate.full_name as string]));
 
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف مقيّم";
@@ -74,9 +75,11 @@ export default async function EvaluationsPage({ searchParams }: { searchParams: 
         assignments={(visibleAssignments ?? []) as unknown as EvaluationAssignment[]}
         evaluators={evaluators as EvaluatorOption[]}
         evaluations={(evaluationData ?? []) as unknown as EvaluationRecord[]}
+        evaluatorNames={evaluatorNames}
         canAssignEvaluators={canAssignEvaluators}
         canEvaluateAll={canEvaluateAll}
         isBranchManager={isBranchManager}
+        canViewReport={canViewAll || isBranchManager}
       />
     </main>
   </EmployeeWorkspace>;
