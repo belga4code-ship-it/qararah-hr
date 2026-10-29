@@ -42,13 +42,14 @@ export default async function EffectsPage() {
     .order("employee_number");
   if (hasRole("branch_manager", "yard_supervisor") && !hasRole("admin", "hr", "auditor") && !extraPermissions.includes("employees.view_all")) employeesQuery = employeesQuery.eq("branch_id", profile.branch_id ?? "00000000-0000-0000-0000-000000000000");
 
-  const [{ data: employeeData }, { data: eventData }, { data: titleData }, { data: branchData }, { data: privateData }, approvalResult] = await Promise.all([
+  const [{ data: employeeData }, { data: eventData }, { data: titleData }, { data: branchData }, { data: privateData }, approvalResult, discountResult] = await Promise.all([
     employeesQuery,
     loadAllHREvents(supabase),
     hasRole("branch_manager") ? supabase.from("job_titles").select("id,name").order("name") : Promise.resolve({ data: [] }),
     profile.branch_id ? supabase.from("branches").select("name").eq("id", profile.branch_id).maybeSingle() : Promise.resolve({ data: null }),
     hasRole("admin", "hr") || extraPermissions.includes("employees.view_sensitive") ? supabase.from("employee_private").select("employee_id,salary_amount,phone") : Promise.resolve({ data: [] }),
     supabase.from("hr_event_approval_steps").select("id,event_id,step_order,approver_role,approver_profile_id,approver_profile_ids,status,decided_by,decided_at,reason").order("step_order"),
+    hasRole("hr", "admin") ? supabase.from("hr_leave_discount_decisions").select("event_id,discount_type,discount_value,decided_at,decided_by") : Promise.resolve({ data: [] }),
   ]);
   const loadedEvents = (eventData ?? []) as unknown as HREvent[];
   const eventIds = loadedEvents.map((event) => event.id);
@@ -91,6 +92,7 @@ export default async function EffectsPage() {
           events={eventsWithRequesters as unknown as HREvent[]}
           approvalNames={approvalNames}
           approvalSteps={(approvalResult.data ?? []) as ApprovalStep[]}
+          hrLeaveDiscountDecisions={(discountResult.data ?? []) as { event_id: string; discount_type: "none" | "fixed" | "days" | "half_day" | "quarter_day"; discount_value: number | null; decided_at: string; decided_by: string }[]}
           approvalWorkflowAvailable={!approvalResult.error}
         />
       </main>
