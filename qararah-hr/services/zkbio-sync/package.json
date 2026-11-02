@@ -1,0 +1,16 @@
+{
+  "name": "qararah-zkbio-sync",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "demo": "node src/index.mjs --once",
+    "demo:watch": "node src/index.mjs",
+    "live:validate": "node src/live-sync.ts --validate-config",
+    "live:once": "node src/live-sync.ts",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24.19"
+  }
+}

@@ -1,0 +1,2 @@
+[functions.zkbio-attendance-ingest]
+verify_jwt = false
