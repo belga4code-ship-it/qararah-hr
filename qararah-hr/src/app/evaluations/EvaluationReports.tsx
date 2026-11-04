@@ -131,7 +131,12 @@ export default function EvaluationReports({ month, onMonthChange, employees, ass
       const cleanup = () => setPrintEmployeeId(null);
       window.addEventListener("afterprint", cleanup, { once: true });
     }
-    window.setTimeout(() => window.print(), 150);
+    // Wait for React to mark and expand the employee sheet before Chromium
+    // calculates the print layout. Without this, a closed <details> can
+    // produce an almost blank preview.
+    window.setTimeout(() => {
+      requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+    }, employeeId ? 250 : 150);
   }
 
   async function exportEmployeeExcel(row: ReportRow) {
@@ -300,7 +305,7 @@ function EmployeeEvaluationSheet({ row, month, evaluatorNames, busy, printTarget
   onExportExcel: () => void;
   onExportPdf: () => void;
 }) {
-  return <details className="evaluation-report-employee" data-print-target={printTarget ? "true" : undefined}>
+  return <details className="evaluation-report-employee" open={printTarget || undefined} data-print-target={printTarget ? "true" : undefined}>
     <summary><div><strong>{employeeName(row.employee)}</strong><small>{row.employee.employee_number} · {[row.employee.branch_name, row.employee.department_name].filter(Boolean).join(" · ") || "—"}</small></div><b className={row.average !== null && row.average >= 75 ? "good" : ""}>{row.average === null ? "—" : `${number(row.average)}%`}</b><span>{statuses[row.status]}</span></summary>
     <div className="evaluation-employee-export-actions"><button type="button" onClick={onExportExcel} disabled={busy}>{busy ? "جارٍ التصدير…" : "⇩ Excel لهذا الموظف"}</button><button type="button" onClick={onExportPdf}>▧ PDF لهذا الموظف</button></div>
     <div className="evaluation-single-employee-print">

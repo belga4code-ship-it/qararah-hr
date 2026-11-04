@@ -66,7 +66,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
       <main className="attendance-page page-content" dir="rtl">
         <section className="attendance-welcome">
           <div><p className="eyebrow">متابعة الدوام</p><h1>الحضور والانصراف</h1><p className="welcome-copy">الفترة المحددة: {periodSummary} · سجلات الحضور والانصراف المستوردة.</p></div>
-          <div className="attendance-page-actions">{canExportAttendanceReport && <AttendancePunchExport from={rangeStart} to={rangeEnd} />}<MonthlyTardinessExport month={selectedMonth} canExport={canExportReports} />{(isHR || isAuditor || isBranchManager || permissions.includes("reports.view_all") || permissions.includes("reports.export")) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{canImportAttendance && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
+          <div className="attendance-page-actions">{isHR && <Link className="secondary-button" href="/attendance/devices">أجهزة البصمة والمزامنة</Link>}{canExportAttendanceReport && <AttendancePunchExport from={rangeStart} to={rangeEnd} />}<MonthlyTardinessExport month={selectedMonth} canExport={canExportReports} />{(isHR || isAuditor || isBranchManager || permissions.includes("reports.view_all") || permissions.includes("reports.export")) && <Link className="secondary-button" href="/attendance/report">إنشاء التقرير الأسبوعي</Link>}{canImportAttendance && <Link className="primary-button" href="/attendance/import"><span>⇧</span> استيراد ملف الحضور</Link>}</div>
         </section>
 
         <div className="attendance-stats">

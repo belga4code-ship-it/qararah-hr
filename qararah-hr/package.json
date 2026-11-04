@@ -10,6 +10,7 @@
     "prod:lan": "next build && next start -H 0.0.0.0",
     "lint": "eslint",
     "test:approvals": "node scripts/test-individual-approvals.mjs",
+    "test:zkbio": "node --test scripts/test-zkbio-ingest.mjs scripts/test-zkbio-function.mjs",
     "test:goals": "node scripts/test-goal-corrections.mjs"
   },
   "dependencies": {
