@@ -7,6 +7,7 @@ type NavigationItem = { label: string; href: string; icon: string; breadcrumb?: 
 
 const employeeShortcuts: NavigationItem[] = [
   { label: "طلب إذن", href: "/effects", icon: "◷", breadcrumb: "الطلبات والقرارات" },
+  { label: "بصمتي", href: "/my-attendance", icon: "◷", breadcrumb: "حضور بصمتي" },
   { label: "أهدافي", href: "/goals", icon: "◎", breadcrumb: "أهدافي" },
   { label: "تقييماتي", href: "/my-evaluations", icon: "☆", breadcrumb: "تقييماتي" },
   { label: "الإبلاغ", href: "/report", icon: "!", breadcrumb: "الإبلاغ" },

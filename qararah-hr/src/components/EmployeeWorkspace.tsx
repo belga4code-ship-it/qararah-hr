@@ -9,6 +9,7 @@ const navigation = [
   { label: "الرئيسية", href: "/", icon: "⌂", breadcrumb: "الرئيسية" },
   { label: "الموظفون", href: "/employees", icon: "♙", breadcrumb: "الموظفون" },
   { label: "الحضور والانصراف", href: "/attendance", icon: "◷", breadcrumb: "الحضور والانصراف" },
+  { label: "حضور بصمتي", href: "/my-attendance", icon: "◷", breadcrumb: "حضور بصمتي" },
   { label: "الطلبات والقرارات", href: "/effects", icon: "▤", breadcrumb: "الطلبات والقرارات" },
   { label: "أهدافي", href: "/goals", icon: "◎", breadcrumb: "أهدافي" },
   { label: "الإجازات والمأموريات", icon: "▣" },
@@ -46,6 +47,7 @@ export default async function EmployeeWorkspace({ children, userName, email, rol
     if (href === "/employees") return hasRole("admin", "hr", "branch_manager", "auditor") || hasPermission("employees.view_all", "employees.edit", "employees.manage_accounts");
     if (href === "/attendance/import") return hasRole("admin", "hr") || hasPermission("attendance.import");
     if (href === "/attendance") return hasRole("admin", "hr", "branch_manager", "accountant", "auditor", "yard_supervisor") || hasPermission("attendance.view_all", "attendance.manage", "attendance.import");
+    if (href === "/my-attendance") return true;
     if (href === "/effects") return true;
     if (href === "/goals") return true;
     if (href === "/evaluations") return hasRole("admin", "hr", "branch_manager", "accountant", "auditor") || hasPermission("evaluations.view_all", "evaluations.evaluate", "evaluations.assign");

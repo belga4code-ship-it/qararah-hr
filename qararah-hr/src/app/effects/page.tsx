@@ -69,6 +69,11 @@ export default async function EffectsPage() {
   const approvalNames = Object.fromEntries((printProfiles ?? []).map((row) => [row.id, row.full_name || "مسؤول غير مسمى"]));
   const privateEmployees = new Map((privateData ?? []).map((row) => [row.employee_id, row]));
   const employeesWithSalary = (employeeData ?? []).map((employee) => ({ ...employee, salary_amount: privateEmployees.get(employee.id)?.salary_amount ?? null, phone: privateEmployees.get(employee.id)?.phone ?? employee.phone ?? null }));
+  const { data: attendanceExplanationData } = hasRole("admin", "hr")
+    ? await supabase.from("attendance_explanations")
+      .select("id,attendance_record_id,employee_id,branch_id,explanation_kind,explanation,status,decision_note,reviewed_at,created_at,employee:employees(employee_number,first_name,last_name,full_name,branch:branches(name)),attendance_record:attendance_records(attendance_date,first_in,last_out,status)")
+      .order("created_at", { ascending: false })
+    : { data: [] };
 
   const name = profile.full_name || user.email || "مستخدم النظام";
   const roleLabel = profile.role === "admin" ? "الإدارة الرئيسية" : profile.role === "hr" ? "مدير الموارد البشرية" : profile.role === "auditor" ? "مراجع حسابات" : profile.role === "branch_manager" ? "مدير الفرع" : profile.role === "accountant" ? "محاسب" : "موظف";
@@ -94,6 +99,7 @@ export default async function EffectsPage() {
           approvalSteps={(approvalResult.data ?? []) as ApprovalStep[]}
           hrLeaveDiscountDecisions={(discountResult.data ?? []) as { event_id: string; discount_type: "none" | "fixed" | "days" | "half_day" | "quarter_day"; discount_value: number | null; decided_at: string; decided_by: string }[]}
           approvalWorkflowAvailable={!approvalResult.error}
+          attendanceExplanations={(attendanceExplanationData ?? []) as never[]}
         />
       </main>
     </EmployeeWorkspace>

@@ -27,6 +27,7 @@ export type HREvent = {
 };
 export type ApprovalStep = { id: string; event_id: string; step_order: number; approver_role: "branch_manager" | "auditor" | "hr" | "assigned_manager"; approver_profile_id?: string | null; approver_profile_ids?: string[]; status: "pending" | "approved" | "rejected" | "skipped"; decided_by: string | null; decided_at: string | null; reason: string | null };
 type HRLeaveDiscountDecision = { event_id: string; discount_type: "none" | "fixed" | "days" | "half_day" | "quarter_day"; discount_value: number | null; decided_at: string; decided_by: string };
+type AttendanceExplanation = { id: string; attendance_record_id: string; employee_id: string; explanation_kind: "late" | "incomplete" | "review"; explanation: string; status: "pending" | "accepted" | "rejected"; decision_note: string | null; reviewed_at: string | null; created_at: string; employee: { employee_number: string; first_name: string; last_name: string | null; full_name: string | null; branch: { name: string } | null } | null; attendance_record: { attendance_date: string; first_in: string | null; last_out: string | null; status: string } | null };
 
 const eventLabels: Record<EventType, string> = {
   new_hire: "تعيين جديد", leave: "إجازة", termination: "إنهاء خدمة", deduction: "خصم من الراتب",
@@ -43,9 +44,9 @@ const whatsappNumber = (phone: string) => {
   return digits;
 };
 
-export default function EffectsWorkspace({ role, userRoles, extraPermissions, userId, employeeId, branchId, employees, jobTitles, events, approvalSteps, approvalWorkflowAvailable, approvalNames, hrLeaveDiscountDecisions }: {
+export default function EffectsWorkspace({ role, userRoles, extraPermissions, userId, employeeId, branchId, employees, jobTitles, events, approvalSteps, approvalWorkflowAvailable, approvalNames, hrLeaveDiscountDecisions, attendanceExplanations }: {
   role: Role; userRoles: string[]; extraPermissions: string[]; userId: string; employeeId: string | null; branchId: string | null;
-  employees: EffectEmployee[]; jobTitles: { id: string; name: string }[]; events: HREvent[]; approvalSteps: ApprovalStep[]; approvalWorkflowAvailable: boolean; approvalNames: Record<string, string>; hrLeaveDiscountDecisions: HRLeaveDiscountDecision[];
+  employees: EffectEmployee[]; jobTitles: { id: string; name: string }[]; events: HREvent[]; approvalSteps: ApprovalStep[]; approvalWorkflowAvailable: boolean; approvalNames: Record<string, string>; hrLeaveDiscountDecisions: HRLeaveDiscountDecision[]; attendanceExplanations: AttendanceExplanation[];
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -79,6 +80,8 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
   const [decisionReasons, setDecisionReasons] = useState<Record<string, string>>({});
   const [leaveDiscountTypes, setLeaveDiscountTypes] = useState<Record<string, "none" | "fixed" | "days" | "half_day" | "quarter_day">>({});
   const [leaveDiscountValues, setLeaveDiscountValues] = useState<Record<string, string>>({});
+  const [attendanceDecisionNotes, setAttendanceDecisionNotes] = useState<Record<string, string>>({});
+  const [attendanceDecisionId, setAttendanceDecisionId] = useState<string | null>(null);
 
   const hasRole = (...roles: string[]) => roles.some((item) => userRoles.includes(item));
   const hasPermission = (...permissions: string[]) => permissions.some((item) => extraPermissions.includes(item));
@@ -92,6 +95,7 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
   const canExportReports = isHeadOffice || isAuditor || hasPermission("reports.export");
   const activeEmployees = employees.filter((employee) => employee.status === "active");
   const pendingCount = events.filter((event) => event.status === "pending").length;
+  const pendingAttendanceExplanationCount = attendanceExplanations.filter((item) => item.status === "pending").length;
   const workBranches = useMemo(() => [...new Set(events.map((event) => event.employee?.branch?.name).filter((name): name is string => Boolean(name)))].sort((a, b) => a.localeCompare(b, "ar")), [events]);
   const workEvents = useMemo(() => events
     .filter((event) => workBranchFilter === "all" || event.employee?.branch?.name === workBranchFilter)
@@ -153,6 +157,25 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
     } finally {
       setDeletingId(null);
     }
+  }
+
+  async function decideAttendanceExplanation(item: AttendanceExplanation, status: "accepted" | "rejected") {
+    if (!isHeadOffice || attendanceDecisionId) return;
+    const note = attendanceDecisionNotes[item.id]?.trim() ?? "";
+    setAttendanceDecisionId(item.id);
+    setMessage(null);
+    const { error } = await supabase.rpc("review_attendance_explanation", {
+      p_explanation_id: item.id, p_status: status, p_decision_note: note || null,
+    });
+    if (error) {
+      setMessage({ text: `تعذر حفظ قرار التفسير: ${error.message}`, error: true });
+      setAttendanceDecisionId(null);
+      return;
+    }
+    setAttendanceDecisionNotes((current) => ({ ...current, [item.id]: "" }));
+    setMessage({ text: status === "accepted" ? "تم قبول التفسير وإبلاغ الموظف بالحالة." : "تم رفض التفسير مع حفظ الملاحظة." });
+    setAttendanceDecisionId(null);
+    router.refresh();
   }
 
   async function saveHRLeaveDiscount(item: HREvent) {
@@ -363,6 +386,10 @@ export default function EffectsWorkspace({ role, userRoles, extraPermissions, us
 
     {canManageDeductions && <section className="panel effects-form-panel"><div className="effects-panel-heading"><div><h2>تسجيل خصم على الراتب</h2><p>الخصم يُحفظ مع المبلغ والسبب والموظف كإجراء معتمد ومرحّل للراتب.</p></div><span className="effects-role-badge head-office">{isAuditor ? "مراجع حسابات" : isHeadOffice ? "الإدارة الرئيسية" : "صلاحية خصومات"}</span></div>
       <form className="effects-form-grid" onSubmit={recordDirectDeduction}><label className="wide">الموظف{employeeSelect(directEmployee, setDirectEmployee)}</label><label>تاريخ الخصم<input type="date" required value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} /></label><label>المبلغ بالدينار الليبي<input type="number" min="0.01" step="0.01" required value={directAmount} onChange={(event) => setDirectAmount(event.target.value)} /></label><label className="wide">سبب الخصم<textarea required rows={2} value={directReason} onChange={(event) => setDirectReason(event.target.value)} placeholder="السبب الذي سيظهر في سجل الموظف" /></label><button className="primary-button" type="submit" disabled={busy}>اعتماد وتسجيل الخصم</button></form>
+    </section>}
+
+    {isHeadOffice && <section className="panel effects-list-panel" id="attendance-explanations"><div className="effects-panel-heading"><div><h2>إذونات وتفسيرات الحضور</h2><p>طلبات مرتبطة بسجل البصمة نفسه. القرار هنا لا يعدّل الحضور أو الراتب تلقائيًا.</p></div><span className="effects-pending-badge">{toWesternDigits(pendingAttendanceExplanationCount)} معلّق</span></div>
+      {attendanceExplanations.length ? <div className="effects-event-list">{attendanceExplanations.map((item) => { const person = item.employee ? employeeName(item.employee) : "موظف"; const record = item.attendance_record; return <article className="effects-event-card" key={item.id}><div className="effects-event-top"><div><span className="effects-event-type">إذن / تفسير حضور</span><h3>{person}<small> · {toWesternDigits(item.employee?.employee_number ?? "—")}</small></h3></div><span className={`effects-status ${item.status === "accepted" ? "approved" : item.status}`}>{item.status === "pending" ? "قيد المراجعة" : item.status === "accepted" ? "مقبول" : "مرفوض"}</span></div><div className="effects-event-meta"><span>نوع الطلب: {item.explanation_kind === "late" ? "تأخير" : item.explanation_kind === "incomplete" ? "بصمة ناقصة" : "سجل يحتاج مراجعة"}</span>{record && <><span>اليوم: {toWesternDigits(record.attendance_date)}</span><span>الحالة: {record.status}</span>{record.first_in && <span>أول دخول: {toWesternDigits(record.first_in.slice(0, 5))}</span>}{record.last_out && <span>آخر خروج: {toWesternDigits(record.last_out.slice(0, 5))}</span>}</>}{item.employee?.branch?.name && <span>{item.employee.branch.name}</span>}</div><p className="effects-event-reason"><b>تفسير الموظف:</b> {item.explanation}</p>{item.decision_note && <p className="effects-decision-reason"><b>ملاحظة الموارد البشرية:</b> {item.decision_note}</p>}{item.status === "pending" && <div className="effects-decision"><label>ملاحظة القرار (اختيارية)<textarea rows={2} value={attendanceDecisionNotes[item.id] ?? ""} onChange={(event) => setAttendanceDecisionNotes((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="اكتب ملاحظة ستظهر للموظف" /></label><div><small>القرار يحفظ حالة الطلب فقط ولا يغيّر ساعات الحضور أو الراتب.</small><button type="button" className="primary-button" disabled={attendanceDecisionId !== null} onClick={() => void decideAttendanceExplanation(item, "accepted")}>{attendanceDecisionId === item.id ? "جارٍ الحفظ…" : "قبول التفسير"}</button><button type="button" className="secondary-button" disabled={attendanceDecisionId !== null} onClick={() => void decideAttendanceExplanation(item, "rejected")}>رفض الطلب</button></div></div>}</article>; })}</div> : <p className="effects-empty-note">لا توجد إذونات أو تفسيرات حضور حتى الآن.</p>}
     </section>}
 
     {staleApprovalCount > 0 && <div className="effects-stale-notice" role="alert"><span aria-hidden="true">!</span><p><b>تنبيه متابعة:</b> لديك {toWesternDigits(staleApprovalCount)} طلبات تنتظر قرارك منذ ثلاثة أيام أو أكثر.</p><a href="#pending-requests">الانتقال للطلبات <span aria-hidden="true">↓</span></a></div>}
